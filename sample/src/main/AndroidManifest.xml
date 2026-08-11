@@ -1,0 +1,50 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:name=".SampleApp"
+        android:label="Deeplinkly Sample"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+
+        <!-- The API key. Same meta-data name the Flutter plugin reads, because
+             it is the same SDK underneath. -->
+        <meta-data
+            android:name="com.deeplinkly.sdk.api_key"
+            android:value="62da475f-4582-4f51-b106-9cb875b3cefb" />
+
+        <meta-data
+            android:name="com.deeplinkly.sdk.link_domains"
+            android:value="example.deeplinkly.com" />
+
+        <!-- singleTop matters: without it Android creates a NEW activity
+             instance per link instead of calling onNewIntent, and the warm-link
+             path in MainActivity never runs. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- App Links. Needs the app's signing fingerprint registered in the
+                 Deeplinkly dashboard before Android will verify it. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="example.deeplinkly.com" />
+            </intent-filter>
+
+            <!-- Custom scheme. Needs no verification, so this is the one the
+                 README's adb commands use. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="deeplinkly-sample" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

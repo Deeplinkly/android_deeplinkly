@@ -104,6 +104,14 @@ object Deeplinkly {
      * initialises from both `Application.onCreate` and a plugin attach cannot
      * double-register anything.
      *
+     * Takes a [Context] rather than an [Application] so no caller has to do the
+     * cast. The application context is always recorded — which is what the
+     * install id and the prefs-backed APIs need — and the two pieces that
+     * genuinely require an [Application], app-open reporting and automatic
+     * launch-intent capture, are simply skipped if one cannot be reached. That
+     * is a degraded SDK rather than a broken one, and it is a case a host
+     * embedding us in an unusual context should not have to think about.
+     *
      * @param autoCaptureLaunchIntents when true (the default) the SDK watches
      *   activity creation and reads launch intents itself. Hosts with a more
      *   precise signal - the Flutter bridge, which drives this from
@@ -111,20 +119,26 @@ object Deeplinkly {
      *   change - pass false and call [onActivityLaunch] themselves.
      */
     @JvmOverloads
-    fun init(app: Application, autoCaptureLaunchIntents: Boolean = true) {
+    fun init(context: Context, autoCaptureLaunchIntents: Boolean = true) {
         if (!initialized.compareAndSet(false, true)) {
             Logger.d("init() called again; ignoring")
             return
         }
 
-        DeeplinklyContext.app = app.applicationContext
+        val appContext = context.applicationContext
+        DeeplinklyContext.app = appContext
+        val application = appContext as? Application
+        if (application == null) {
+            Logger.w("Application unavailable; app-open reporting and automatic launch-intent capture are off")
+        }
+
         SdkRuntime.ioScope =
             CoroutineScope(SupervisorJob() + Dispatchers.IO + coroutineErrorHandler)
         SdkRuntime.mainHandler = Handler(Looper.getMainLooper())
 
         isEnabled = try {
-            val appInfo = app.packageManager.getApplicationInfo(
-                app.packageName, PackageManager.GET_META_DATA
+            val appInfo = appContext.packageManager.getApplicationInfo(
+                appContext.packageName, PackageManager.GET_META_DATA
             )
             apiKey = appInfo.metaData?.getString(MANIFEST_API_KEY).orEmpty()
             StartupEnrichment.schedule(apiKey)
@@ -134,7 +148,7 @@ object Deeplinkly {
             } else {
                 // Fires on the 0->1 started-activity transition, before any
                 // host-driven lifecycle signal arrives.
-                AppOpenReporter.register(app, apiKey)
+                application?.let { AppOpenReporter.register(it, apiKey) }
                 true
             }
         } catch (e: Exception) {
@@ -143,7 +157,7 @@ object Deeplinkly {
         }
 
         if (isEnabled && autoCaptureLaunchIntents) {
-            registerLaunchIntentCapture(app)
+            application?.let { registerLaunchIntentCapture(it) }
         }
     }
 

@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "android_deeplinkly"
 
 include(":deeplinkly")
+include(":sample")
