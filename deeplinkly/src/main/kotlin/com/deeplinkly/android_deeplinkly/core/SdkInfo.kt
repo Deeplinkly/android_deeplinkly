@@ -1,18 +1,33 @@
 package com.deeplinkly.android_deeplinkly.core
 
+import com.deeplinkly.android_deeplinkly.BuildConfig
+
 /**
  * Identity of the SDK build itself.
- *
- * Hand-maintained rather than read from BuildConfig: this is an Android library
- * whose version is owned by pubspec.yaml, and the AAR's own BuildConfig carries
- * the host app's version, not ours. Bump [VERSION] with pubspec.yaml.
  *
  * Reported as `sdk_version` and folded into the static-profile stamp, so an SDK
  * upgrade re-collects the device profile — which is what makes a signal added
  * in a new release actually get collected on existing installs.
  */
 object SdkInfo {
-    const val VERSION = "1.9.0"
+    /**
+     * The published artifact version, from `VERSION_NAME` in gradle.properties.
+     *
+     * Read from BuildConfig rather than hand-maintained. It was a literal back
+     * when this was a module inside the Flutter plugin — where the AAR's own
+     * BuildConfig carried the *host app's* version, not ours, so a constant was
+     * the only option and pubspec.yaml owned the number. Publishing this as its
+     * own artifact makes BuildConfig ours and that reasoning obsolete, which
+     * matters because the constant had already drifted: 1.0.0 shipped reporting
+     * itself as 1.9.0.
+     *
+     * Note this is the *native* SDK version. An app using the Flutter plugin
+     * reports the version of the SDK actually running, not the plugin version
+     * wrapping it; the two version independently now and only one of them is
+     * the code that produced the payload.
+     */
+    val VERSION: String = BuildConfig.SDK_VERSION
+
     const val PLATFORM = "android"
 
     /**

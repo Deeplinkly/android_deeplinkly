@@ -11,9 +11,26 @@ android {
 
     compileSdk = 35
 
+    buildFeatures {
+        // Only for SDK_VERSION below. Off by default in AGP 8, and nothing else
+        // here needs it.
+        buildConfig = true
+    }
+
     defaultConfig {
         minSdk = 21
         consumerProguardFiles("consumer-rules.pro")
+
+        // The single source of truth for the version the SDK reports as
+        // `sdk_version`. It used to be a hand-maintained constant kept in step
+        // with pubspec.yaml, which stopped being possible the moment this
+        // library started versioning independently of the Flutter plugin - and
+        // promptly drifted, shipping as 1.0.0 while reporting 1.9.0.
+        buildConfigField(
+            "String",
+            "SDK_VERSION",
+            "\"${providers.gradleProperty("VERSION_NAME").get()}\"",
+        )
     }
 
     compileOptions {
