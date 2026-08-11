@@ -1,0 +1,48 @@
+name: Publish
+
+# Tag-triggered. Push v1.0.0 to release 1.0.0.
+#
+# A Central release is IMMUTABLE - it cannot be overwritten or deleted, only
+# superseded. So this deliberately does not auto-release: it uploads to a
+# staging repository and stops, leaving the final "Publish" button to a human on
+# central.sonatype.com. Flip `automaticRelease` in deeplinkly/build.gradle.kts
+# once the process has proven itself over a few releases.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Never ship a release that has not passed its own tests.
+      - name: Test
+        run: ./gradlew :deeplinkly:testReleaseUnitTest
+
+      - name: Check the tag matches VERSION_NAME
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::tag v$TAG does not match VERSION_NAME=$VERSION in gradle.properties"
+            exit 1
+          fi
+          echo "releasing $VERSION"
+
+      - name: Publish to Central
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPE_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.SONATYPE_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew publishToMavenCentral --no-configuration-cache
