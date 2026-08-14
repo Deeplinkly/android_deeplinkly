@@ -210,9 +210,6 @@ object DeeplinklyNetwork {
         if (params != null) {
             out["params"] = params.toValueMap()
         }
-        if (!json.isNull("probability")) {
-            out["probability"] = json.optDouble("probability", -1.0).takeIf { it >= 0 }
-        }
         return out
     }
 
@@ -317,15 +314,22 @@ object DeeplinklyNetwork {
         return out
     }
 
-    fun sendEnrichment(data: Map<String, String?>, apiKey: String) {
-        if (TrackingPreferences.isTrackingDisabled()) return
+    /**
+     * @return whether the payload reached the backend on this attempt. A
+     *   queued retry reports false: a caller's dedupe latch must not close on a
+     *   payload that has so far only been written to storage.
+     */
+    fun sendEnrichment(data: Map<String, String?>, apiKey: String): Boolean {
+        if (TrackingPreferences.isTrackingDisabled()) return false
         val payload = JSONObject(data.filterValues { it != null })
-        try {
+        return try {
             val response = doPost(DomainConfig.ENRICH_ENDPOINT, payload.toString(), apiKey)
             val code = response.optInt("_status_code", 0)
             // doPost reports non-2xx through the body rather than throwing, so the
             // status has to be inspected here for the response to be retried at all.
-            if (!isHttpSuccess(code)) {
+            if (isHttpSuccess(code)) {
+                true
+            } else {
                 val failure = DeeplinklyHttpException(code, response.toString())
                 if (failure.isTerminal) {
                     Logger.w("Enrichment rejected (HTTP $code), not queueing")
@@ -333,10 +337,12 @@ object DeeplinklyNetwork {
                     Logger.e("Enrichment failed, queueing", failure)
                     SdkRetryQueue.enqueue(payload, "enrichment")
                 }
+                false
             }
         } catch (e: Exception) {
             Logger.e("Enrichment failed, queueing", e)
             SdkRetryQueue.enqueue(payload, "enrichment")
+            false
         }
     }
 

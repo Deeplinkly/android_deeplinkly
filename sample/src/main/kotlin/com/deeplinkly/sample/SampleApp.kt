@@ -35,8 +35,7 @@ class SampleApp : Application() {
                 buildString {
                     appendLine("source:      ${link.source}")
                     appendLine("click_id:    ${link.clickId ?: "(none)"}")
-                    appendLine("params:      ${link.params}")
-                    append("probability: ${link.probability ?: "(none)"}")
+                    append("params:      ${link.params}")
                 }
             )
             onLinksChanged?.invoke()

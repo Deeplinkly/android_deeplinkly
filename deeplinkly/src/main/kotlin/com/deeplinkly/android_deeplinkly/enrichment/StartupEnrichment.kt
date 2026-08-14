@@ -160,6 +160,11 @@ object StartupEnrichment {
                     attributionData = attribution.mapValues { it.value },
                     source = "app_start",
                     apiKey = apiKey,
+                    // A timed-out wait sends whatever it has: an install with
+                    // no link behind it is still an install. "app_start" is a
+                    // lifecycle source and is exempt from the attribution gate
+                    // anyway, so this only says out loud what the caller meant.
+                    force = force,
                 )
                 Logger.d("StartupEnrichment: sent (force=$force, hasData=${hasAttributionData(attribution)}).")
             } catch (t: Throwable) {

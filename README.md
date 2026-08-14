@@ -4,7 +4,7 @@ Deep linking, deferred deep linking and attribution for Android.
 
 ```groovy
 dependencies {
-    implementation 'com.deeplinkly:deeplinkly-android:1.0.0'
+    implementation 'com.deeplinkly:deeplinkly-android:1.1.0'
 }
 ```
 
@@ -104,6 +104,18 @@ manifest; this SDK does not add anything to your app that it does not have to.
 
 `init` is idempotent, so calling it more than once is harmless.
 
+You can inspect the SDK state and version when needed:
+
+```kotlin
+Deeplinkly.isEnabled          // true after init when the API key was found
+Deeplinkly.version            // the native SDK version, for example "1.0.0"
+```
+
+`isEnabled` is `false` before `init` and remains `false` when the manifest API
+key is missing or unreadable. In that state reporting and deep-link handling
+are no-ops, but `getDeeplinklyId()` remains available because it is generated
+locally.
+
 ## Handle deep links
 
 ```kotlin
@@ -112,6 +124,13 @@ Deeplinkly.setDeepLinkListener { link ->
     Log.d("app", "click=${link.clickId} params=${link.params}")
     router.open(link.params)
 }
+```
+
+There is one active listener. Setting another replaces the current listener;
+pass `null` to detach it:
+
+```kotlin
+Deeplinkly.setDeepLinkListener(null)
 ```
 
 **And forward warm links from every activity that can receive one:**
@@ -147,7 +166,6 @@ dropping it.
 class DeeplinklyDeepLink {
     val clickId: String?            // null if the backend did not recognise the click
     val params: Map<String, Any?>   // the link's own parameters
-    val probability: Double?        // deferred-match confidence, when sent
     val source: String              // deep_link | deep_link_fallback | install_referrer
     val raw: Map<String, Any?>      // the payload exactly as resolved
 }
@@ -206,11 +224,42 @@ Deeplinkly.generateLink(
 }
 ```
 
+`DeeplinklyContent` also accepts `description` and `imageUrl`, while
+`DeeplinklyLinkOptions` accepts `tags: List<String>`. A failed
+`DeeplinklyResult` exposes `errorCode` and `errorMessage`.
+
+If you already have the backend payload in its flat, snake-case wire format,
+you can bypass the models:
+
+```kotlin
+Deeplinkly.generateLink(
+    payload = mapOf(
+        "canonical_identifier" to "product/sku_42",
+        "title" to "Pro Plan",
+        "description" to "Upgrade to Pro",
+        "image_url" to "https://cdn.yourapp.com/products/sku_42.png",
+        "metadata" to mapOf("plan" to "pro"),
+        "channel" to "email",
+        "feature" to "upgrade_campaign",
+        "tags" to listOf("spring", "sale"),
+    ),
+) { result ->
+    if (result.success) {
+        share(result.url!!)
+    } else {
+        Log.e("app", "${result.errorCode}: ${result.errorMessage}")
+    }
+}
+```
+
 ## Privacy
 
 ```kotlin
 Deeplinkly.setTrackingEnabled(false)                       // off entirely
 Deeplinkly.setAttributionLevel(AttributionLevel.REDUCED)   // middle ground
+
+val trackingEnabled = Deeplinkly.isTrackingEnabled()
+val level = Deeplinkly.getAttributionLevel()
 ```
 
 | Level | What is sent |
@@ -232,6 +281,10 @@ To start restricted before any of your code runs:
 ```
 
 `setTrackingEnabled(false)` still wins and behaves as `NONE`.
+
+The tracking switch and attribution level persist across launches.
+`getAttributionLevel()` returns the level currently in force, so it returns
+`NONE` while tracking is disabled even if a higher level was previously set.
 
 The SDK does **not** do probabilistic ("fingerprint") matching. Device signals
 are collected for reporting, never to derive an identifier linking a click to an
@@ -255,6 +308,26 @@ Without it everything else works unchanged; attribution still resolves
 deterministically. `ACCESS_NETWORK_STATE` is likewise not declared: if your app
 already holds it the SDK reports `connection_type`, and if not, that one field
 is omitted.
+
+## Advanced lifecycle control
+
+Normal native integrations do not need to call either of these methods:
+
+```kotlin
+Deeplinkly.onForeground()
+Deeplinkly.shutdown()
+```
+
+`onForeground()` optionally reports an app-open and asks the persistent link
+queue to process immediately. The SDK already observes activity transitions,
+and duplicate foreground calls are rate-limited, so this is mainly useful to a
+framework bridge that owns a more precise foreground signal.
+
+`shutdown()` detaches the deep-link listener, stops queue processing, and
+cancels the SDK's background scope. It is intended for final host/framework
+teardown, not ordinary activity destruction. The SDK cannot be initialized
+again in the same process after shutdown, so application integrations should
+normally leave the process-wide SDK running.
 
 ## Debugging
 

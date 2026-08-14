@@ -6,7 +6,7 @@ package com.deeplinkly.android_deeplinkly
  * [raw] is the payload exactly as it was resolved and persisted, and the
  * accessors below only read from it. That indirection is deliberate: the
  * Flutter bridge forwards [raw] over the method channel unchanged, so Dart's
- * `{click_id, params, probability}` envelope stays byte-identical to what it
+ * `{click_id, params}` envelope stays byte-identical to what it
  * was before this type existed. Parsing into fields and re-serialising would
  * put a lossy round trip in the one path that has to be exact.
  *
@@ -36,10 +36,6 @@ class DeeplinklyDeepLink internal constructor(
     @Suppress("UNCHECKED_CAST")
     val params: Map<String, Any?>
         get() = raw["params"] as? Map<String, Any?> ?: emptyMap()
-
-    /** Deferred-match confidence, when the backend sends it. */
-    val probability: Double?
-        get() = (raw["probability"] as? Number)?.toDouble()
 
     override fun toString(): String =
         "DeeplinklyDeepLink(source=$source, clickId=$clickId, params=$params)"
