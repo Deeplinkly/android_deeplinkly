@@ -1,15 +1,48 @@
 package com.deeplinkly.android_deeplinkly.network
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.deeplinkly.android_deeplinkly.core.DeeplinklyContext
+import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
+import com.deeplinkly.android_deeplinkly.core.Prefs
+import com.deeplinkly.android_deeplinkly.privacy.TrackingPreferences
 import com.deeplinkly.android_deeplinkly.privacy.SignalCatalogue
 import com.deeplinkly.android_deeplinkly.privacy.SignalScope
 import org.json.JSONObject
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class DeeplinklyNetworkTest {
+
+    @Before
+    fun setUp() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        DeeplinklyContext.app = context
+        Prefs.of().edit().clear().commit()
+    }
+
+    @Test
+    fun `identity headers are present while tracking is enabled`() {
+        DeeplinklyUtils.setCustomUserId("customer-1")
+
+        val headers = DeeplinklyNetwork.identityHeaders()
+
+        assertNotNull(headers["X-Deeplinkly-User-Id"])
+        assertEquals("customer-1", headers["X-Deeplinkly-Custom-User-Id"])
+    }
+
+    @Test
+    fun `functional requests omit identity headers while tracking is disabled`() {
+        DeeplinklyUtils.setCustomUserId("customer-1")
+        DeeplinklyUtils.getOrCreateDeviceId()
+        TrackingPreferences.setTrackingDisabled(true)
+
+        assertTrue(DeeplinklyNetwork.identityHeaders().isEmpty())
+    }
 
     // --- DeeplinklyHttpException.isTerminal -------------------------------
 

@@ -453,9 +453,26 @@ object DeeplinklyNetwork {
             setRequestProperty("Authorization", "Bearer $apiKey")
             setRequestProperty("Accept", "application/json")
             setRequestProperty("X-Request-Id", UUID.randomUUID().toString())
-            setRequestProperty("X-Deeplinkly-User-Id", DeeplinklyUtils.getOrCreateDeviceId())
-            DeeplinklyUtils.getCustomUserId()?.let {
-                setRequestProperty("X-Deeplinkly-Custom-User-Id", it)
+            identityHeaders().forEach { (name, value) ->
+                setRequestProperty(name, value)
             }
         }
+
+    /**
+     * Identity headers shared by every endpoint.
+     *
+     * Functional resolve/generate requests still work while reporting is off,
+     * but they must not silently become tracking calls. The tenant key, link
+     * identity and unavoidable transport IP are sufficient for the operation;
+     * stable SDK/customer identifiers are omitted.
+     */
+    internal fun identityHeaders(): Map<String, String> {
+        if (TrackingPreferences.isTrackingDisabled()) return emptyMap()
+        return buildMap {
+            put("X-Deeplinkly-User-Id", DeeplinklyUtils.getOrCreateDeviceId())
+            DeeplinklyUtils.getCustomUserId()?.let {
+                put("X-Deeplinkly-Custom-User-Id", it)
+            }
+        }
+    }
 }

@@ -11,6 +11,7 @@ import android.os.Looper
 import com.deeplinkly.android_deeplinkly.core.AppOpenReporter
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyContext
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
+import com.deeplinkly.android_deeplinkly.core.DeviceProfile
 import com.deeplinkly.android_deeplinkly.core.Logger
 import com.deeplinkly.android_deeplinkly.core.Prefs
 import com.deeplinkly.android_deeplinkly.core.SdkInfo
@@ -24,6 +25,7 @@ import com.deeplinkly.android_deeplinkly.network.DeeplinklyNetwork
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
 import com.deeplinkly.android_deeplinkly.privacy.TrackingPreferences
 import com.deeplinkly.android_deeplinkly.queue.QueueProcessor
+import com.deeplinkly.android_deeplinkly.queue.DeepLinkQueue
 import com.deeplinkly.android_deeplinkly.retry.SdkRetryQueue
 import com.deeplinkly.android_deeplinkly.storage.AttributionStore
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -393,6 +395,31 @@ object Deeplinkly {
      */
     fun setTrackingEnabled(enabled: Boolean) {
         TrackingPreferences.setTrackingDisabled(!enabled)
+    }
+
+    /**
+     * Deletes Deeplinkly's locally stored identifiers, attribution, device
+     * profile, event/session state, and pending queues.
+     *
+     * The SDK remains disabled after the reset. This prevents a reset made for
+     * consent withdrawal or deletion from immediately minting and reporting a
+     * replacement identity. Call [setTrackingEnabled] explicitly if the user
+     * later opts back in.
+     */
+    fun resetPrivacyData(): Boolean {
+        // Persist opt-out first so an in-flight failure cannot recreate a
+        // reporting queue while deletion is in progress.
+        TrackingPreferences.setTrackingDisabled(true)
+        DeepLinkQueue.clearAll()
+        SdkRetryQueue.clearAll()
+        DeviceProfile.invalidate()
+
+        // This preferences file belongs exclusively to Deeplinkly. Keep the
+        // opt-out bit in the same atomic commit that removes everything else.
+        return Prefs.of().edit()
+            .clear()
+            .putBoolean("tracking_disabled", true)
+            .commit()
     }
 
     /** Whether reporting is currently on. */

@@ -9,6 +9,7 @@ import com.deeplinkly.android_deeplinkly.network.isTerminalHttp
 import com.deeplinkly.android_deeplinkly.network.optStringOrNull
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
 import com.deeplinkly.android_deeplinkly.privacy.SignalCatalogue
+import com.deeplinkly.android_deeplinkly.privacy.TrackingPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -90,18 +91,30 @@ object SdkRetryQueue {
     /**
      * Enqueue a failed request for retry
      */
-    fun enqueue(payload: JSONObject, type: String) = lock.withLock {
-        val queue = getQueue().toMutableList()
-        val item = RetryItem(payload, type)
-        queue.add(item)
-        
-        // Keep queue size manageable
-        while (queue.size > MAX_QUEUE_SIZE) {
-            queue.removeAt(0)
+    fun enqueue(payload: JSONObject, type: String) {
+        // An in-flight request may fail after consent was withdrawn. Never
+        // recreate a queue that setTrackingDisabled(true) has just purged.
+        if (TrackingPreferences.isTrackingDisabled()) {
+            Logger.d("Dropping $type retry while tracking is disabled")
+            return
         }
-        
-        saveQueue(queue)
-        Logger.d("Enqueued retry: type=$type, queueSize=${queue.size}")
+        lock.withLock {
+            // Close the check/clear race: opt-out may have committed and
+            // purged while this caller was waiting to acquire the queue lock.
+            if (TrackingPreferences.isTrackingDisabled()) return
+
+            val queue = getQueue().toMutableList()
+            val item = RetryItem(payload, type)
+            queue.add(item)
+
+            // Keep queue size manageable
+            while (queue.size > MAX_QUEUE_SIZE) {
+                queue.removeAt(0)
+            }
+
+            saveQueue(queue)
+            Logger.d("Enqueued retry: type=$type, queueSize=${queue.size}")
+        }
     }
     
     /**
@@ -233,11 +246,32 @@ object SdkRetryQueue {
         }
         return out
     }
+
+    /** Re-filters the nested device sample without touching customer event data. */
+    internal fun refilterEvent(payload: JSONObject): JSONObject {
+        val out = JSONObject(payload.toString())
+        val device = out.optJSONObject("device") ?: return out
+        val filtered = refilter(device)
+        if (filtered.length() == 0) {
+            out.remove("device")
+        } else {
+            out.put("device", filtered)
+        }
+        return out
+    }
     
     /**
      * Retry all pending items
      */
     fun retryAll(apiKey: String) {
+        // Opt-out is strict for reporting. Old SDK versions left queued
+        // payloads behind; purge them on sight rather than retaining data that
+        // can be replayed if tracking is later re-enabled.
+        if (TrackingPreferences.isTrackingDisabled()) {
+            clearAll()
+            return
+        }
+
         // One atomic claim, not a get() followed by a set(). retryAll is called
         // on every activity attach, and two callers passing the read before
         // either wrote drained the same queue in parallel - re-sending every
@@ -258,6 +292,12 @@ object SdkRetryQueue {
                 Logger.d("Processing ${queue.size} pending retries")
                 
                 queue.forEach { item ->
+                    // Consent can change while a drain is running. Re-check
+                    // before every dispatch and purge the remainder.
+                    if (TrackingPreferences.isTrackingDisabled()) {
+                        clearAll()
+                        return@ioLaunch
+                    }
                     // A device that was offline for a month would otherwise
                     // replay month-old device state as current. The attempt cap
                     // alone does not bound age: an item only burns an attempt
@@ -296,7 +336,7 @@ object SdkRetryQueue {
                                 removeItem(item)
                             }
                             "event" -> {
-                                DeeplinklyNetwork.sendEventNow(item.payload, apiKey)
+                                DeeplinklyNetwork.sendEventNow(refilterEvent(item.payload), apiKey)
                                 Logger.d("Successfully retried event")
                                 removeItem(item)
                             }
@@ -339,5 +379,3 @@ object SdkRetryQueue {
         Logger.d("Cleared all retry queue")
     }
 }
-
-

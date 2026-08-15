@@ -4,7 +4,7 @@ Deep linking, deferred deep linking and attribution for Android.
 
 ```groovy
 dependencies {
-    implementation 'com.deeplinkly:deeplinkly-android:1.1.0'
+    implementation 'com.deeplinkly:deeplinkly-android:1.1.1'
 }
 ```
 
@@ -257,6 +257,7 @@ Deeplinkly.generateLink(
 ```kotlin
 Deeplinkly.setTrackingEnabled(false)                       // off entirely
 Deeplinkly.setAttributionLevel(AttributionLevel.REDUCED)   // middle ground
+Deeplinkly.resetPrivacyData()                              // delete local SDK data; stays off
 
 val trackingEnabled = Deeplinkly.isTrackingEnabled()
 val level = Deeplinkly.getAttributionLevel()
@@ -280,7 +281,15 @@ To start restricted before any of your code runs:
            android:value="reduced" />
 ```
 
-`setTrackingEnabled(false)` still wins and behaves as `NONE`.
+`setTrackingEnabled(false)` still wins and behaves as `NONE` for attribution,
+but is stricter than the level alone: it deletes pending reporting retries and
+blocks enrichment, events, and diagnostics. Functional resolve/generate calls
+continue without the stable Deeplinkly ID or custom user ID.
+
+`resetPrivacyData()` deletes the locally stored Deeplinkly ID, custom user ID,
+attribution, cached device profile, session/event state, and pending queues. It
+leaves tracking disabled so deletion cannot immediately create and report a
+replacement identity.
 
 The tracking switch and attribution level persist across launches.
 `getAttributionLevel()` returns the level currently in force, so it returns

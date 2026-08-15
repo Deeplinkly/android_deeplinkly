@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyContext
 import com.deeplinkly.android_deeplinkly.core.Prefs
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
+import com.deeplinkly.android_deeplinkly.privacy.TrackingPreferences
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Before
@@ -79,6 +80,39 @@ class SdkRetryQueueTest {
         assertTrue(refiltered.has("click_id"))
     }
 
+    @Test
+    fun `queued event device block is refiltered without changing event data`() {
+        val event = JSONObject().apply {
+            put("event_name", "purchase")
+            put("parameters", JSONObject().put("sku", "A1"))
+            put("device", fullPayload())
+        }
+        AttributionLevel.set(AttributionLevel.MINIMAL)
+
+        val refiltered = SdkRetryQueue.refilterEvent(event)
+
+        assertEquals("purchase", refiltered.getString("event_name"))
+        assertEquals("A1", refiltered.getJSONObject("parameters").getString("sku"))
+        assertEquals(
+            setOf("deeplinkly_device_id", "click_id"),
+            refiltered.getJSONObject("device").keys().asSequence().toSet(),
+        )
+    }
+
+    @Test
+    fun `queued event loses its device block at none`() {
+        val event = JSONObject().apply {
+            put("event_name", "purchase")
+            put("device", fullPayload())
+        }
+        AttributionLevel.set(AttributionLevel.NONE)
+
+        val refiltered = SdkRetryQueue.refilterEvent(event)
+
+        assertEquals("purchase", refiltered.getString("event_name"))
+        assertFalse(refiltered.has("device"))
+    }
+
     /**
      * The age leak. The attempt cap does not bound age — an item only burns an
      * attempt when a retry is actually tried — so a device offline for a month
@@ -106,5 +140,34 @@ class SdkRetryQueueTest {
         )
 
         assertFalse(SdkRetryQueue.isExpired(recent))
+    }
+
+    @Test
+    fun `disabling tracking purges queued reports`() {
+        SdkRetryQueue.enqueue(fullPayload(), "event")
+        assertNotNull(Prefs.of().getString("dl_pending_retries", null))
+
+        TrackingPreferences.setTrackingDisabled(true)
+
+        assertNull(Prefs.of().getString("dl_pending_retries", null))
+    }
+
+    @Test
+    fun `an in flight failure cannot enqueue after opt out`() {
+        TrackingPreferences.setTrackingDisabled(true)
+
+        SdkRetryQueue.enqueue(fullPayload(), "error")
+
+        assertNull(Prefs.of().getString("dl_pending_retries", null))
+    }
+
+    @Test
+    fun `retry drain purges a legacy queue while opted out`() {
+        TrackingPreferences.setTrackingDisabled(true)
+        Prefs.of().edit().putString("dl_pending_retries", "[]").commit()
+
+        SdkRetryQueue.retryAll("test-key")
+
+        assertNull(Prefs.of().getString("dl_pending_retries", null))
     }
 }
