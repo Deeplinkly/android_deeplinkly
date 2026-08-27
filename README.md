@@ -4,7 +4,7 @@ Deep linking, deferred deep linking and attribution for Android.
 
 ```groovy
 dependencies {
-    implementation 'com.deeplinkly:deeplinkly-android:1.1.1'
+    implementation 'com.deeplinkly:deeplinkly-android:1.2.0'
 }
 ```
 

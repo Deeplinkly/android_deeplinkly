@@ -32,7 +32,7 @@ object EnrichmentSender {
     /** Any one of these makes a payload worth sending on its own. */
     private val ATTRIBUTION_KEYS = listOf(
         "click_id", "code", "utm_source", "utm_medium", "utm_campaign",
-        "gclid", "fbclid", "ttclid",
+        "gclid", "fbclid", "ttclid", "gbraid", "wbraid",
     )
 
     /** What makes one enrichment a different report from another. */

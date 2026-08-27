@@ -33,7 +33,7 @@ data class SignalSpec(val tier: SignalTier, val scope: SignalScope)
  */
 object SignalCatalogue {
     /** Part of the static-profile stamp; bumping it forces a re-collect. */
-    const val VERSION = 7
+    const val VERSION = 8
 
     val SPECS: Map<String, SignalSpec> = mapOf(
         "advertising_id" to SignalSpec(SignalTier.FULL, SignalScope.DYNAMIC),
@@ -61,6 +61,7 @@ object SignalCatalogue {
         "fbclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "first_app_version" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
         "first_open_at" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
+        "gbraid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "gclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "google_play_instant" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
         "hardware_concurrency" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
@@ -103,6 +104,7 @@ object SignalCatalogue {
         "utm_medium" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "utm_source" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "utm_term" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
+        "wbraid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "webview_user_agent" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
     )
 

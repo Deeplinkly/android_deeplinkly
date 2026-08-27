@@ -86,6 +86,8 @@ object InstallReferrerHandler {
                         attributionData["gclid"] = parsedReferrer.getQueryParameter("gclid")
                         attributionData["fbclid"] = parsedReferrer.getQueryParameter("fbclid")
                         attributionData["ttclid"] = parsedReferrer.getQueryParameter("ttclid")
+                        attributionData["gbraid"] = parsedReferrer.getQueryParameter("gbraid")
+                        attributionData["wbraid"] = parsedReferrer.getQueryParameter("wbraid")
 
                         val localParams = mapOf<String, String?>(
                             "utm_source" to parsedReferrer.getQueryParameter("utm_source"),
@@ -95,7 +97,9 @@ object InstallReferrerHandler {
                             "utm_content" to parsedReferrer.getQueryParameter("utm_content"),
                             "gclid" to parsedReferrer.getQueryParameter("gclid"),
                             "fbclid" to parsedReferrer.getQueryParameter("fbclid"),
-                            "ttclid" to parsedReferrer.getQueryParameter("ttclid")
+                            "ttclid" to parsedReferrer.getQueryParameter("ttclid"),
+                            "gbraid" to parsedReferrer.getQueryParameter("gbraid"),
+                            "wbraid" to parsedReferrer.getQueryParameter("wbraid")
                         )
 
                         val initialAttribution = linkedMapOf<String, String?>(
@@ -109,6 +113,8 @@ object InstallReferrerHandler {
                             "gclid" to parsedReferrer.getQueryParameter("gclid"),
                             "fbclid" to parsedReferrer.getQueryParameter("fbclid"),
                             "ttclid" to parsedReferrer.getQueryParameter("ttclid"),
+                            "gbraid" to parsedReferrer.getQueryParameter("gbraid"),
+                            "wbraid" to parsedReferrer.getQueryParameter("wbraid"),
                             "click_id" to clickId
                         )
                         AttributionStore.saveOnce(initialAttribution)
