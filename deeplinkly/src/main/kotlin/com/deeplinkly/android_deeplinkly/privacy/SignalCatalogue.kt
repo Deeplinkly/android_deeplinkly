@@ -16,8 +16,10 @@ enum class SignalScope {
     STATIC,
     /** Collected fresh at send time. Never persisted in a queue. */
     DYNAMIC,
-    /** Names the link or user being reported on, not the device. */
+    /** Names the link being reported on, not the device. */
     IDENTITY,
+    /** What the host app told us about the person using it. */
+    USER,
 }
 
 data class SignalSpec(val tier: SignalTier, val scope: SignalScope)
@@ -33,7 +35,7 @@ data class SignalSpec(val tier: SignalTier, val scope: SignalScope)
  */
 object SignalCatalogue {
     /** Part of the static-profile stamp; bumping it forces a re-collect. */
-    const val VERSION = 7
+    const val VERSION = 9
 
     val SPECS: Map<String, SignalSpec> = mapOf(
         "advertising_id" to SignalSpec(SignalTier.FULL, SignalScope.DYNAMIC),
@@ -51,7 +53,7 @@ object SignalCatalogue {
         "collected_at" to SignalSpec(SignalTier.MINIMAL, SignalScope.DYNAMIC),
         "connection_type" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
         "cpu_abi" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
-        "custom_user_id" to SignalSpec(SignalTier.MINIMAL, SignalScope.IDENTITY),
+        "custom_user_id" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
         "deeplinkly_device_id" to SignalSpec(SignalTier.MINIMAL, SignalScope.STATIC),
         "device" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
         "device_carrier" to SignalSpec(SignalTier.FULL, SignalScope.DYNAMIC),
@@ -61,6 +63,7 @@ object SignalCatalogue {
         "fbclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "first_app_version" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
         "first_open_at" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
+        "gbraid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "gclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "google_play_instant" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
         "hardware_concurrency" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
@@ -98,11 +101,23 @@ object SignalCatalogue {
         "ttclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "ui_mode_night" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
         "unidentified_device" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
+        "user_city" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_country" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_date_of_birth" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_email" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_first_name" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_gender" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_last_name" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_phone" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_state" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_street" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_zip" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
         "utm_campaign" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "utm_content" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "utm_medium" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "utm_source" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "utm_term" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
+        "wbraid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "webview_user_agent" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
     )
 

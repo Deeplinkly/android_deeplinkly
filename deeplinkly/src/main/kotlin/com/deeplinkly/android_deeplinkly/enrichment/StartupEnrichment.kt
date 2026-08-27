@@ -135,7 +135,9 @@ object StartupEnrichment {
         val hasUtm = !attr["utm_source"].isNullOrBlank()
         val hasIds = !attr["gclid"].isNullOrBlank() || 
                      !attr["fbclid"].isNullOrBlank() || 
-                     !attr["ttclid"].isNullOrBlank()
+                     !attr["ttclid"].isNullOrBlank() ||
+                     !attr["gbraid"].isNullOrBlank() ||
+                     !attr["wbraid"].isNullOrBlank()
         val hasClickId = !attr["click_id"].isNullOrBlank()
         return hasUtm || hasIds || hasClickId
     }

@@ -150,6 +150,18 @@ class DeeplinklyNetworkTest {
     }
 
     @Test
+    fun `the google braid click ids ride along on the resolve`() {
+        // Android usually recovers these from the raw install referrer, which
+        // ships whole and is re-parsed server-side. A link opened directly as
+        // an App Link never produces a referrer, so this is the only path they
+        // have, and the key list used to drop them.
+        val query = DeeplinklyNetwork.attributionQuery(
+            mapOf("gbraid" to "gb1", "wbraid" to "wb1", "screen" to "profile")
+        )
+        assertEquals(mapOf("gbraid" to "gb1", "wbraid" to "wb1"), query)
+    }
+
+    @Test
     fun `blank attribution values are dropped rather than sent empty`() {
         val query = DeeplinklyNetwork.attributionQuery(
             mapOf("utm_source" to "", "utm_medium" to null, "utm_campaign" to "launch")

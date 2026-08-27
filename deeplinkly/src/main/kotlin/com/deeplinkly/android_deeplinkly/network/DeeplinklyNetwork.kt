@@ -233,10 +233,18 @@ object DeeplinklyNetwork {
         "params" to localParams.filterKeys { it != "click_id" }.filterValues { it != null }
     )
 
-    /** Attribution keys the backend surfaces inside the resolve response's "params". */
+    /**
+     * Attribution keys the backend surfaces inside the resolve response's "params".
+     *
+     * `gbraid`/`wbraid` are listed ahead of the backend, which does not yet
+     * persist either on ClickEvent. On Android they arrive anyway: the raw
+     * `install_referrer` ships whole and the server re-parses it. Listing them
+     * keeps the table identical to iOS, where the same pair is the only strong
+     * Google signal there is.
+     */
     private val ATTRIBUTION_KEYS = listOf(
         "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "gclid", "fbclid", "ttclid"
+        "gclid", "fbclid", "ttclid", "gbraid", "wbraid"
     )
 
     /**

@@ -6,6 +6,8 @@ import com.deeplinkly.android_deeplinkly.core.DeviceProfile
 import com.deeplinkly.android_deeplinkly.core.DynamicSignals
 import com.deeplinkly.android_deeplinkly.core.Logger
 import com.deeplinkly.android_deeplinkly.core.Prefs
+import com.deeplinkly.android_deeplinkly.DeeplinklyUserData
+import com.deeplinkly.android_deeplinkly.core.UserDataStore
 import com.deeplinkly.android_deeplinkly.network.DeeplinklyNetwork
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
 import kotlinx.coroutines.Dispatchers
@@ -32,11 +34,14 @@ object EnrichmentSender {
     /** Any one of these makes a payload worth sending on its own. */
     private val ATTRIBUTION_KEYS = listOf(
         "click_id", "code", "utm_source", "utm_medium", "utm_campaign",
-        "gclid", "fbclid", "ttclid",
+        "gclid", "fbclid", "ttclid", "gbraid", "wbraid",
     )
 
     /** What makes one enrichment a different report from another. */
     private val IDENTITY_KEYS = listOf("click_id", "code", "custom_user_id")
+
+    /** The source `setUserData`/`clearUserData` report under. */
+    internal const val USER_DATA_SOURCE = "user_data"
 
     /**
      * How a payload leaves the device, and whether it arrived.
@@ -72,6 +77,15 @@ object EnrichmentSender {
 
             val payload = DynamicSignals.assemble(DeviceProfile.get()).toMutableMap()
             payload["custom_user_id"] = DeeplinklyUtils.getCustomUserId()
+            // What the host app told us about the person, if anything. Read
+            // here rather than passed in for the same reason the device profile
+            // is: a payload replayed out of the retry queue days later should
+            // carry what we know now, and a caller has no business supplying
+            // someone else's details on one particular enrichment.
+            //
+            // Empty values are meaningful here and must survive — see
+            // UserDataStore.clear.
+            payload.putAll(UserDataStore.get())
             payload.putAll(attributionData)
 
             // Reported so the backend can tell a thin payload from a missing
@@ -131,7 +145,42 @@ object EnrichmentSender {
             .joinToString("&")
         // Not hashCode(): parity with iOS, where per-process String hash seeding
         // made a hashed key differ on every launch and dedupe nothing.
-        return if (identity.isEmpty()) "${source}_enriched" else "${source}_enriched_$identity"
+        val base =
+            if (identity.isEmpty()) "${source}_enriched" else "${source}_enriched_$identity"
+        // For this one source, the user data *is* what is being reported, so it
+        // has to be part of what makes two reports different. Without it, a
+        // second setUserData call under the same custom_user_id — adding an
+        // address to an email already sent, the common case — produces the same
+        // key as the first and is latched away, never reaching us.
+        //
+        // A digest rather than the values, because this string becomes the name
+        // of a SharedPreferences key: writing someone's email address into one
+        // would put it somewhere neither clearUserData nor the tombstone can
+        // reach.
+        if (source != USER_DATA_SOURCE) return base
+        val fingerprint = DeeplinklyUserData.KEYS
+            .sorted()
+            .mapNotNull { key -> data[key]?.let { "$key=$it" } }
+            .joinToString("&")
+        return if (fingerprint.isEmpty()) base else "${base}_${stableDigest(fingerprint)}"
+    }
+
+    /**
+     * FNV-1a, 64-bit, rendered hex.
+     *
+     * Written out rather than reached for because the two things a JVM offers
+     * are both wrong here: `String.hashCode` is 32-bit and collides at this
+     * size, and `MessageDigest` is a heavier dependency than a dedupe key
+     * warrants. What matters is that it is stable across launches and identical
+     * to the Swift twin, and it is both.
+     */
+    internal fun stableDigest(value: String): String {
+        var hash = -0x340d631b7bdddcdbL // 14695981039346656037 unsigned
+        for (byte in value.toByteArray(Charsets.UTF_8)) {
+            hash = hash xor (byte.toLong() and 0xff)
+            hash *= 0x100000001b3L
+        }
+        return java.lang.Long.toHexString(hash)
     }
 
     private fun isoUtc(millis: Long): String {

@@ -161,4 +161,44 @@ class DeeplinklyEventTest {
     @Test
     fun `nulls inside a container are allowed`() =
         accepts("e", mapOf("k" to listOf(1, null, "a")))
+
+    // ------------------------------------------------- reserved revenue keys
+
+    /**
+     * `value` and `currency` are checked on the plain `logEvent` path, not only
+     * inside `logPurchase`. `logEvent` is public and untyped, so a caller who
+     * spells a purchase out by hand has to get the same answer as one who used
+     * the wrapper — otherwise the backend's typed columns fill with whatever
+     * the hand-rolled path felt like sending.
+     */
+    @Test
+    fun `accepts a numeric value and a three-letter currency`() {
+        assertNull(DeeplinklyEvent.validate("purchase", mapOf("value" to 49.99, "currency" to "USD")))
+        assertNull(DeeplinklyEvent.validate("purchase", mapOf("value" to 49, "currency" to "eur")))
+    }
+
+    @Test
+    fun `rejects a value that is not a number`() {
+        assertNotNull(DeeplinklyEvent.validate("purchase", mapOf("value" to "49.99")))
+    }
+
+    @Test
+    fun `rejects a negative or non-finite value`() {
+        assertNotNull(DeeplinklyEvent.validate("purchase", mapOf("value" to -1.0)))
+        assertNotNull(DeeplinklyEvent.validate("purchase", mapOf("value" to Double.NaN)))
+    }
+
+    @Test
+    fun `rejects a currency that is not an ISO-4217 shape`() {
+        assertNotNull(DeeplinklyEvent.validate("purchase", mapOf("currency" to "dollars")))
+        assertNotNull(DeeplinklyEvent.validate("purchase", mapOf("currency" to 840)))
+    }
+
+    /** They are ordinary parameters otherwise: no `_dl_` exemption. */
+    @Test
+    fun `the revenue keys still count against the parameter budget`() {
+        val params = (1..24).associate { "k$it" to ("v" as Any?) } +
+            mapOf("value" to 1.0 as Any?, "currency" to "USD" as Any?)
+        assertNotNull(DeeplinklyEvent.validate("purchase", params))
+    }
 }

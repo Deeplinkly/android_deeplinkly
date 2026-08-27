@@ -4,7 +4,7 @@ Deep linking, deferred deep linking and attribution for Android.
 
 ```groovy
 dependencies {
-    implementation 'com.deeplinkly:deeplinkly-android:1.1.1'
+    implementation 'com.deeplinkly:deeplinkly-android:1.3.0'
 }
 ```
 
@@ -189,6 +189,60 @@ Deeplinkly.getDeeplinklyId()         // stable install id
 Deeplinkly.setUserId("user_123")     // your own id, reported as custom_user_id
 ```
 
+## User data
+
+The fields a conversion is matched on once it reaches Meta's Conversions API or
+Google's enhanced conversions.
+
+```kotlin
+Deeplinkly.setUserData(
+    userId = "user_123",
+    email = "ada@example.com",
+    phoneNumber = "+441234567890",
+    firstName = "Ada",
+    lastName = "Lovelace",
+    city = "London",
+    country = "GB",
+)   // false if any field was malformed, in which case nothing was stored
+```
+
+Every field is optional and each call **merges**, so you can supply an email at
+sign-up and an address at checkout. A malformed field rejects the whole call —
+nothing is stored — so you never have to guess which of the values took.
+
+Values are sent as you supply them and hashed only when a conversion is
+forwarded. On-device hashing would look safer and buy nothing: the digest of a
+normalised email is exactly the value Meta matches on, so anyone holding it
+holds the match key. Keeping the plaintext is also what lets the backend
+normalise per destination, which Meta and Google disagree about.
+
+Supply only what your own privacy policy and consent flow allow — the SDK
+cannot know what you told your users. These fields survive a `reduced`
+downgrade, because the attribution levels gate what the SDK *observes* about a
+device and an email someone typed into your app is not an observation. At the
+`none` level nothing is sent, here as everywhere.
+
+Constraints, enforced before anything is stored:
+
+- `dateOfBirth`: `YYYY-MM-DD`
+- `gender`: `"m"` or `"f"` — the only two values Meta's `ge` accepts. Anything
+  else is refused rather than coerced into a letter that means something you did
+  not say.
+- `country`: ISO-3166-1 alpha-2, e.g. `"US"`
+- per-field maximum lengths, listed in [SIGNALS.md](docs/SIGNALS.md)
+
+To erase everything recorded — on sign-out, or when someone withdraws consent:
+
+```kotlin
+Deeplinkly.clearUserData()
+```
+
+This is not merely "stop sending": the next enrichment reports each
+previously-set field as empty, which the backend reads as "null this column".
+The erasure is re-sent until it is delivered, so calling it on a device that is
+offline still takes effect once it is not. To clear only the id, call
+`setUserId(null)`.
+
 ## Events
 
 ```kotlin
@@ -208,6 +262,43 @@ number, not `"49.99"`. Constraints, enforced before anything is sent:
 - string value ≤ 256 characters
 - `List`/`Map` values are stored as compact JSON; the 256 limit applies to that
   encoded form
+
+Every event also carries a client-generated event id. It is Meta CAPI's
+`event_id`, and it is what makes a replay off the retry queue idempotent: an
+event that was delivered but whose response was lost comes back carrying an id
+the backend already has, and is refused rather than counted twice.
+
+## Purchases
+
+```kotlin
+Deeplinkly.logPurchase(
+    value = 49.99,
+    currency = "USD",
+    orderId = "ord_42",
+    quantity = 1,
+    productId = "sku_9",
+) { accepted -> /* optional */ }
+```
+
+A typed wrapper over `logEvent` rather than a separate pipeline: it sends the
+event named `purchase` with `value` and `currency` set, and everything true of
+`logEvent` — the retry queue, the parameter limits, the device block — is true
+of this too.
+
+It exists because those two keys have to be spelled the same way by every
+caller. `logEvent` is untyped, so left to themselves one app sends `revenue` and
+another sends `"USD 49.99"`, and a conversion forwarder has to guess. Meta's
+Conversions API wants `custom_data.value` and `currency`; Google wants a
+conversion value and currency. This is the one spelling both can be built from.
+
+Rejected, sending nothing, if the value is negative or not finite (a refund is a
+different event, not a negative purchase), the currency is not three letters,
+the quantity is negative, or `parameters` contains any of the keys this method
+sets. `logEvent` applies the same checks to `value` and `currency` wherever they
+appear, so a hand-rolled purchase gets the same answer.
+
+`orderId` is worth passing: it is what Google deduplicates conversions on, and
+it is how you reconcile a forwarded conversion against your own records.
 
 ## Generate links
 
@@ -251,6 +342,21 @@ Deeplinkly.generateLink(
     }
 }
 ```
+
+## Data collected
+
+[`docs/SIGNALS.md`](docs/SIGNALS.md) is the field-by-field catalogue: every field
+the SDK may send, and the lowest attribution level at which each one still
+ships. It is generated from the shared signal catalogue, so it describes this
+exact version rather than the latest one.
+
+Use it when you fill in your Google Play **Data safety** form, your App Store
+**privacy label**, or your own privacy notice — those are your declarations to
+make, and they must cover what your app configures the SDK to send, not only
+the defaults.
+
+Deeplinkly's own handling of that data, its recipients, and retention are in the
+[Deeplinkly Privacy Policy](https://www.deeplinkly.com/privacy-policy).
 
 ## Privacy
 
