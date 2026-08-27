@@ -99,10 +99,16 @@ object DeepLinkQueue {
      * it survived this filter only to be dropped by EnrichmentSender's
      * fail-closed one. Anything named here must exist in signals.json or it
      * never reaches the wire.
+     *
+     * `custom_user_id` used to be subtracted here by hand, because it was
+     * catalogued IDENTITY and had no business being written to disk with a
+     * pending link. It is USER-scoped now, along with the email and address
+     * fields that followed it, so the scope says what the exclusion list used
+     * to — and personal data is kept off this queue by construction rather than
+     * by whoever adds the next field remembering to name it here.
      */
     private val QUEUEABLE_KEYS: Set<String> =
-        SignalCatalogue.keysFor(SignalScope.IDENTITY) - "custom_user_id" +
-            "android_reported_at"
+        SignalCatalogue.keysFor(SignalScope.IDENTITY) + "android_reported_at"
 
     /** Drops anything that is not link identity. */
     private fun onlyIdentity(data: Map<String, String?>): Map<String, String?> =

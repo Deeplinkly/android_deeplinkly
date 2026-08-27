@@ -24,9 +24,9 @@ enum class AttributionLevel(val wireName: String) {
 
     /**
      * Drops every signal classified [SignalTier.FULL] — the advertising ID, the
-     * Android ID, and the high-entropy hardware signals that only exist to
-     * support probabilistic matching. Keeps the coarse context a marketer
-     * actually reads.
+     * Android ID, and high-entropy hardware/reporting signals. Keeps the coarse
+     * context a marketer actually reads. None of these tiers controls matching;
+     * attribution is deterministic at every level.
      */
     REDUCED("reduced"),
 
@@ -48,10 +48,9 @@ enum class AttributionLevel(val wireName: String) {
     /**
      * Whether the advertising ID may be reported. Only [FULL].
      *
-     * Named for what it gates. It used to be `allowsFingerprint`, from when it
-     * also decided whether a device-signal block rode along on `/resolve`; that
-     * block is gone, and the cached-ad-id re-attach in `EnrichmentSender` is
-     * the only caller left.
+     * Named for what it gates: the cached-ad-id re-attach in
+     * `EnrichmentSender` is the only caller. `/resolve` never carries a device
+     * profile.
      */
     val allowsAdvertisingId: Boolean get() = this == FULL
 

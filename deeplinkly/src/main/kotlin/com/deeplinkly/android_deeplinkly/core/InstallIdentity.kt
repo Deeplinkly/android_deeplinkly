@@ -69,6 +69,12 @@ internal object InstallIdentity {
         "tracking_disabled",
         "custom_user_id",
         "dl_custom_user_id",
+        // Same argument as custom_user_id, and stronger: this is the person's
+        // own email and address, given to the app by the person. It is the same
+        // person after a restore, and dropping it would silently stop matching
+        // their conversions on the new phone. One key, not eleven — see
+        // UserDataStore for why that matters to this list.
+        "dl_user_data",
     )
 
     /**

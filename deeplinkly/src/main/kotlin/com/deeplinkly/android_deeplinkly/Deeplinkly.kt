@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import com.deeplinkly.android_deeplinkly.attribution.EnrichmentSender
 import com.deeplinkly.android_deeplinkly.core.AppOpenReporter
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyContext
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
@@ -18,6 +19,7 @@ import com.deeplinkly.android_deeplinkly.core.SdkInfo
 import com.deeplinkly.android_deeplinkly.core.SdkRuntime
 import com.deeplinkly.android_deeplinkly.core.SessionManager
 import com.deeplinkly.android_deeplinkly.core.UserIdManager
+import com.deeplinkly.android_deeplinkly.core.UserDataStore
 import com.deeplinkly.android_deeplinkly.enrichment.StartupEnrichment
 import com.deeplinkly.android_deeplinkly.handlers.DeepLinkHandler
 import com.deeplinkly.android_deeplinkly.handlers.InstallReferrerHandler
@@ -292,6 +294,118 @@ object Deeplinkly {
         UserIdManager.updateCustomUserId(userId, apiKey)
     }
 
+    /**
+     * Records what you know about the person using your app.
+     *
+     * These are the fields a conversion is matched on once it is forwarded to
+     * Meta's Conversions API or Google's enhanced conversions. On an iOS device
+     * where App Tracking Transparency was denied — which is most of them — a
+     * hashed email is the only match key that still exists, so supplying one
+     * here is the difference between a purchase that is attributed to the
+     * campaign that produced it and one that is not.
+     *
+     * Values are sent as you supply them and hashed only at forwarding time;
+     * see [DeeplinklyUserData] for why on-device hashing would be security
+     * theatre rather than a safeguard. Supply only what your own privacy policy
+     * and consent flow allow — the SDK cannot know what you told your users.
+     *
+     * ## Merging
+     *
+     * Each call merges: a field left null is left as it was, so you can call
+     * this at sign-up with an email and again at checkout with an address. That
+     * means a single field cannot be cleared by passing null for it —
+     * [clearUserData] erases all of them, and [setUserId] with null clears just
+     * the id.
+     *
+     * @param userId your own identifier for this person. Delegates to
+     *   [setUserId], so it shares that value rather than storing a second copy.
+     * @param dateOfBirth `YYYY-MM-DD`.
+     * @param gender `"m"` or `"f"` — the only two values Meta's `ge` accepts.
+     *   Anything else is refused rather than coerced.
+     * @param country ISO-3166-1 alpha-2, e.g. `"US"`.
+     * @return false if any field was malformed, in which case **nothing** was
+     *   stored. All or nothing, so a rejected call never leaves you guessing
+     *   which of the values took.
+     */
+    @JvmOverloads
+    fun setUserData(
+        userId: String? = null,
+        email: String? = null,
+        phoneNumber: String? = null,
+        firstName: String? = null,
+        lastName: String? = null,
+        dateOfBirth: String? = null,
+        gender: String? = null,
+        street: String? = null,
+        city: String? = null,
+        state: String? = null,
+        zip: String? = null,
+        country: String? = null,
+    ): Boolean {
+        if (!isEnabled) return false
+
+        val result = DeeplinklyUserData.normalizeAll(
+            mapOf(
+                DeeplinklyUserData.KEY_EMAIL to email,
+                DeeplinklyUserData.KEY_PHONE to phoneNumber,
+                DeeplinklyUserData.KEY_FIRST_NAME to firstName,
+                DeeplinklyUserData.KEY_LAST_NAME to lastName,
+                DeeplinklyUserData.KEY_DATE_OF_BIRTH to dateOfBirth,
+                DeeplinklyUserData.KEY_GENDER to gender,
+                DeeplinklyUserData.KEY_STREET to street,
+                DeeplinklyUserData.KEY_CITY to city,
+                DeeplinklyUserData.KEY_STATE to state,
+                DeeplinklyUserData.KEY_ZIP to zip,
+                DeeplinklyUserData.KEY_COUNTRY to country,
+            )
+        )
+        result.rejection?.let {
+            Logger.w("Rejected setUserData: ${it.reason}")
+            return false
+        }
+        val fields = result.fields.orEmpty()
+
+        // The id first, and through the same manager setUserId uses, so there
+        // is exactly one place custom_user_id is stored no matter which of the
+        // two public entry points wrote it.
+        val trimmedId = userId?.trim()
+        if (!trimmedId.isNullOrEmpty()) {
+            UserIdManager.updateCustomUserId(trimmedId, apiKey)
+        }
+
+        if (fields.isEmpty()) return true
+        UserDataStore.merge(fields)
+
+        SdkRuntime.ioLaunch {
+            // force: knowing who someone is has nothing to do with whether a
+            // link brought them here, so this must not be gated on attribution
+            // evidence — an organic install would otherwise never report it.
+            EnrichmentSender.sendOnce(emptyMap(), EnrichmentSender.USER_DATA_SOURCE, apiKey, force = true)
+        }
+        return true
+    }
+
+    /**
+     * Forgets everything [setUserData] and [setUserId] recorded, here and on
+     * our servers.
+     *
+     * Call it on sign-out, or when someone withdraws consent. Unlike letting
+     * the values simply stop being sent, this actively erases them: the next
+     * enrichment carries each previously-set field as an empty value, which the
+     * backend reads as "null this column" rather than "not reported".
+     *
+     * The erasure is re-sent until it is delivered, so calling this on a device
+     * that is offline still takes effect once it is not.
+     */
+    fun clearUserData() {
+        if (!isEnabled) return
+        UserIdManager.updateCustomUserId(null, apiKey)
+        UserDataStore.clear()
+        SdkRuntime.ioLaunch {
+            EnrichmentSender.sendOnce(emptyMap(), EnrichmentSender.USER_DATA_SOURCE, apiKey, force = true)
+        }
+    }
+
     // ------------------------------------------------------------------ events
 
     /**
@@ -329,6 +443,12 @@ object Deeplinkly {
             Prefs.of().edit().putLong("dl_event_seq", next).commit()
             next
         }
+        // One id per call, and the same id on every replay of it: the retry
+        // queue stores the payload built here, so an event that was delivered
+        // but whose response was lost comes back carrying the id the backend
+        // already has and is refused as the duplicate it is. Meta CAPI's
+        // `event_id` wants the same value.
+        params["_dl_event_id"] = java.util.UUID.randomUUID().toString()
         params["_dl_event_seq"] = seq.toString()
         // Milliseconds since the SDK initialised, not a raw monotonic clock
         // reading. Same ordering power for events from a device with a wrong
@@ -347,6 +467,63 @@ object Deeplinkly {
             val ok = DeeplinklyNetwork.logEvent(DeeplinklyEvent.normalizeName(name), params, apiKey)
             callback?.let { SdkRuntime.postToMain { it(ok) } }
         }
+    }
+
+    /**
+     * Logs a purchase.
+     *
+     * A thin, typed wrapper over [logEvent] rather than a separate pipeline:
+     * it sends the event named `purchase` with `value` and `currency` set, and
+     * everything true of [logEvent] — the retry queue, the parameter limits,
+     * the device block — is true of this too.
+     *
+     * The wrapper exists because those two keys have to be spelled the same way
+     * by every caller. `logEvent` is untyped, so left to themselves one app
+     * sends `revenue`, another sends `"$49.99"`, and a conversion forwarder has
+     * to guess. Meta's Conversions API wants `custom_data.value` and
+     * `currency`; Google wants a conversion value and currency. This is the one
+     * spelling both can be built from.
+     *
+     * @param value the amount, in [currency]. Rejected if negative or not
+     *   finite — a refund is not a negative purchase, it is a different event.
+     * @param currency ISO-4217, e.g. `"USD"`. Case-insensitive.
+     * @param orderId your own id for the transaction. Worth passing: it is what
+     *   Google deduplicates conversions on, and it is how you reconcile a
+     *   forwarded conversion against your own records.
+     * @param parameters anything else you want on the event. May not contain
+     *   the keys this method sets.
+     * @param callback receives true only when the backend accepted the event.
+     */
+    @JvmOverloads
+    fun logPurchase(
+        value: Double,
+        currency: String,
+        orderId: String? = null,
+        quantity: Int? = null,
+        productId: String? = null,
+        parameters: Map<String, Any?> = emptyMap(),
+        callback: ((Boolean) -> Unit)? = null,
+    ) {
+        if (!isEnabled) {
+            callback?.let { SdkRuntime.postToMain { it(false) } }
+            return
+        }
+
+        val purchase = DeeplinklyPurchase.build(
+            value = value,
+            currency = currency,
+            orderId = orderId,
+            quantity = quantity,
+            productId = productId,
+            parameters = parameters,
+        )
+        purchase.rejection?.let { rejection ->
+            Logger.w("Rejected purchase: ${rejection.reason}")
+            callback?.let { SdkRuntime.postToMain { it(false) } }
+            return
+        }
+
+        logEvent(DeeplinklyPurchase.EVENT_NAME, purchase.parameters.orEmpty(), callback)
     }
 
     // ------------------------------------------------------------------- links

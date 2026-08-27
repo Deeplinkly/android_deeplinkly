@@ -3,7 +3,9 @@ package com.deeplinkly.android_deeplinkly.attribution
 import androidx.test.core.app.ApplicationProvider
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyContext
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
+import com.deeplinkly.android_deeplinkly.DeeplinklyUserData
 import com.deeplinkly.android_deeplinkly.core.Prefs
+import com.deeplinkly.android_deeplinkly.core.UserDataStore
 import com.deeplinkly.android_deeplinkly.network.DeeplinklyNetwork
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
 import kotlinx.coroutines.runBlocking
@@ -203,5 +205,114 @@ class EnrichmentSenderTest {
         val filtered = AttributionLevel.MINIMAL.filter(payload)
 
         assertEquals(payload, filtered)
+    }
+
+    // ---------------------------------------------------------- user data
+
+    /**
+     * The whole point of the `user` scope: what the app told us about the
+     * person rides along on the enrichment, so a conversion forwarded later can
+     * be matched at Meta or Google without the event itself having to carry it.
+     */
+    @Test
+    fun `user data rides along on the payload`() {
+        UserDataStore.merge(
+            mapOf(
+                DeeplinklyUserData.KEY_EMAIL to "ada@example.com",
+                DeeplinklyUserData.KEY_COUNTRY to "GB",
+            )
+        )
+
+        send(mapOf("click_id" to "c1"))
+
+        assertEquals(1, sent.size)
+        assertEquals("ada@example.com", sent[0][DeeplinklyUserData.KEY_EMAIL])
+        assertEquals("GB", sent[0][DeeplinklyUserData.KEY_COUNTRY])
+    }
+
+    /**
+     * Empty is a value here, not an absence. `UserDataStore.clear` tombstones
+     * each set field to "" and the backend reads that as "erase this column";
+     * a filter that dropped empties on the way out would turn a deletion into a
+     * no-op without anyone noticing.
+     */
+    @Test
+    fun `a tombstoned field is sent as an empty value`() {
+        UserDataStore.merge(mapOf(DeeplinklyUserData.KEY_EMAIL to "ada@example.com"))
+        UserDataStore.clear()
+
+        send(mapOf("click_id" to "c1"))
+
+        assertEquals(1, sent.size)
+        assertEquals("", sent[0][DeeplinklyUserData.KEY_EMAIL])
+    }
+
+    /**
+     * The latch is keyed on what is being reported. For this source that is the
+     * user data itself, so adding an address to an email already sent — the
+     * ordinary second call — must not collapse into the first.
+     */
+    @Test
+    fun `a second user_data report with different fields is not deduped`() {
+        UserDataStore.merge(mapOf(DeeplinklyUserData.KEY_EMAIL to "ada@example.com"))
+        send(emptyMap(), source = "user_data", force = true)
+
+        UserDataStore.merge(mapOf(DeeplinklyUserData.KEY_CITY to "London"))
+        send(emptyMap(), source = "user_data", force = true)
+
+        assertEquals(2, sent.size)
+        assertEquals("London", sent[1][DeeplinklyUserData.KEY_CITY])
+    }
+
+    /** The same call twice is still one report. */
+    @Test
+    fun `an unchanged user_data report is deduped`() {
+        UserDataStore.merge(mapOf(DeeplinklyUserData.KEY_EMAIL to "ada@example.com"))
+        send(emptyMap(), source = "user_data", force = true)
+        send(emptyMap(), source = "user_data", force = true)
+
+        assertEquals(1, sent.size)
+    }
+
+    /**
+     * A dedupe key becomes the name of a SharedPreferences entry, and an email
+     * address written into one would sit somewhere neither clearUserData nor
+     * the tombstone can reach.
+     */
+    @Test
+    fun `the dedupe key does not contain the user data itself`() {
+        val key = EnrichmentSender.dedupeKey(
+            mapOf(DeeplinklyUserData.KEY_EMAIL to "ada@example.com"),
+            "user_data",
+        )
+        assertFalse(key.contains("ada@example.com"))
+    }
+
+    /** Stable across launches, and identical to the Swift implementation. */
+    @Test
+    fun `the digest is stable for a given input`() {
+        assertEquals(
+            EnrichmentSender.stableDigest("user_email=ada@example.com"),
+            EnrichmentSender.stableDigest("user_email=ada@example.com"),
+        )
+        assertNotEquals(
+            EnrichmentSender.stableDigest("user_email=ada@example.com"),
+            EnrichmentSender.stableDigest("user_email=grace@example.com"),
+        )
+    }
+
+    /**
+     * Other sources are unaffected: every enrichment now carries user data, and
+     * folding it into their keys too would re-send a deep-link report every
+     * time an unrelated field changed.
+     */
+    @Test
+    fun `user data does not change the dedupe key of other sources`() {
+        val without = EnrichmentSender.dedupeKey(mapOf("click_id" to "c1"), "deep_link")
+        val with = EnrichmentSender.dedupeKey(
+            mapOf("click_id" to "c1", DeeplinklyUserData.KEY_EMAIL to "ada@example.com"),
+            "deep_link",
+        )
+        assertEquals(without, with)
     }
 }
