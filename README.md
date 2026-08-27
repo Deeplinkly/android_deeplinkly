@@ -355,7 +355,10 @@ Use it when you fill in your Google Play **Data safety** form, your App Store
 make, and they must cover what your app configures the SDK to send, not only
 the defaults.
 
-Deeplinkly's own handling of that data, its recipients, and retention are in the
+Deeplinkly's own handling of that data — what the service stores, what
+`setUserData()` makes you the controller of, and how retention and deletion work
+— is summarised at [Data & Privacy](https://www.deeplinkly.com/docs/privacy).
+Recipients, legal bases, and transfers are in the
 [Deeplinkly Privacy Policy](https://www.deeplinkly.com/privacy-policy).
 
 ## Privacy
