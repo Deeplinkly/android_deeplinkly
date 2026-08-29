@@ -11,7 +11,7 @@ import kotlin.concurrent.withLock
  * extends it, and the first one past it starts a new session. That is the same
  * convention analytics products converge on, and it is what makes an event
  * joinable to the device sample taken alongside it — without which a
- * `DeviceSignalSample` and an `SdkEvent` from the same visit have nothing but a
+ * a device-signal record and an an event record from the same visit have nothing but a
  * timestamp in common.
  *
  * Persisted rather than held in memory, so a session survives the process being

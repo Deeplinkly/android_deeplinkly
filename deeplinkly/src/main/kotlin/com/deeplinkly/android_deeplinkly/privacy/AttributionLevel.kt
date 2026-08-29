@@ -15,7 +15,7 @@ import com.deeplinkly.android_deeplinkly.core.Prefs
  * Ordering matters — each level is a strict subset of the one above it. Which
  * keys each level permits is not decided here: it lives in [SignalCatalogue],
  * generated from `tool/signals.json` so that this file, iOS's
- * `AttributionLevel.swift` and the backend cannot disagree about what a given
+ * `AttributionLevel.swift` and the service cannot disagree about what a given
  * consent choice means. They previously did.
  */
 enum class AttributionLevel(val wireName: String) {
@@ -58,7 +58,7 @@ enum class AttributionLevel(val wireName: String) {
      * Strips a collected payload down to what this level permits.
      *
      * Delegates every decision to [SignalCatalogue], which is generated from
-     * `tool/signals.json` and shared with iOS and the backend. This used to be
+     * `tool/signals.json` and shared with iOS and the service. This used to be
      * a denylist for [REDUCED] and an allowlist for [MINIMAL], which meant a
      * newly added signal shipped at REDUCED unless someone remembered to
      * classify it — the wrong default for the one function whose job is to not

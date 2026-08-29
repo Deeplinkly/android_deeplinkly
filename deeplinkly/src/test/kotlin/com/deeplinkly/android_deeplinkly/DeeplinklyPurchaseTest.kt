@@ -19,7 +19,7 @@ class DeeplinklyPurchaseTest {
         val result = build()
         assertNull(result.rejection)
         assertEquals("USD", result.parameters!![DeeplinklyPurchase.KEY_CURRENCY])
-        // Not "49.99". The backend stores this as a Decimal, and a value that
+        // Not "49.99". The service stores this as a Decimal, and a value that
         // arrives as a string is one the JSON has already made ambiguous.
         assertEquals(49.99, result.parameters!![DeeplinklyPurchase.KEY_VALUE])
     }

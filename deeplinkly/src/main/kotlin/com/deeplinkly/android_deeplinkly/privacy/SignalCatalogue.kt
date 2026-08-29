@@ -10,7 +10,7 @@ enum class SignalTier(val rank: Int) {
     FULL(2),
 }
 
-/** Where a signal comes from, and where the backend stores it. */
+/** Where a signal comes from, and where the service stores it. */
 enum class SignalScope {
     /** Collected once per device and cached until the profile stamp changes. */
     STATIC,
@@ -35,7 +35,7 @@ data class SignalSpec(val tier: SignalTier, val scope: SignalScope)
  */
 object SignalCatalogue {
     /** Part of the static-profile stamp; bumping it forces a re-collect. */
-    const val VERSION = 9
+    const val VERSION = 13
 
     val SPECS: Map<String, SignalSpec> = mapOf(
         "advertising_id" to SignalSpec(SignalTier.FULL, SignalScope.DYNAMIC),
@@ -52,6 +52,9 @@ object SignalCatalogue {
         "code" to SignalSpec(SignalTier.MINIMAL, SignalScope.IDENTITY),
         "collected_at" to SignalSpec(SignalTier.MINIMAL, SignalScope.DYNAMIC),
         "connection_type" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
+        "consent_ad_personalization" to SignalSpec(SignalTier.MINIMAL, SignalScope.DYNAMIC),
+        "consent_ad_user_data" to SignalSpec(SignalTier.MINIMAL, SignalScope.DYNAMIC),
+        "consent_is_eea" to SignalSpec(SignalTier.MINIMAL, SignalScope.DYNAMIC),
         "cpu_abi" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
         "custom_user_id" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
         "deeplinkly_device_id" to SignalSpec(SignalTier.MINIMAL, SignalScope.STATIC),
@@ -63,6 +66,9 @@ object SignalCatalogue {
         "fbclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "first_app_version" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
         "first_open_at" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
+        "free_storage_gb" to SignalSpec(SignalTier.FULL, SignalScope.DYNAMIC),
+        "gad_campaignid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
+        "gad_source" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "gbraid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "gclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "google_play_instant" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
@@ -82,9 +88,12 @@ object SignalCatalogue {
         "manufacturer" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
         "os_build_id" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
         "os_version" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
+        "pii_hashing_enabled" to SignalSpec(SignalTier.MINIMAL, SignalScope.DYNAMIC),
         "pixel_ratio" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
         "platform" to SignalSpec(SignalTier.MINIMAL, SignalScope.STATIC),
         "product" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
+        "push_provider" to SignalSpec(SignalTier.FULL, SignalScope.DYNAMIC),
+        "push_token" to SignalSpec(SignalTier.FULL, SignalScope.DYNAMIC),
         "referrer_click_at" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
         "referrer_install_version" to SignalSpec(SignalTier.REDUCED, SignalScope.STATIC),
         "region" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
@@ -98,11 +107,13 @@ object SignalCatalogue {
         "static_profile_version" to SignalSpec(SignalTier.MINIMAL, SignalScope.STATIC),
         "timezone" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
         "timezone_offset_min" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
+        "total_storage_gb" to SignalSpec(SignalTier.FULL, SignalScope.STATIC),
         "ttclid" to SignalSpec(SignalTier.REDUCED, SignalScope.IDENTITY),
         "ui_mode_night" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
         "unidentified_device" to SignalSpec(SignalTier.REDUCED, SignalScope.DYNAMIC),
         "user_city" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
         "user_country" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
+        "user_custom_data" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
         "user_date_of_birth" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
         "user_email" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),
         "user_first_name" to SignalSpec(SignalTier.MINIMAL, SignalScope.USER),

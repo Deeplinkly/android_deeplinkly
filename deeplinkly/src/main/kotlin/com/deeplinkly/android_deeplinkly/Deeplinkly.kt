@@ -10,11 +10,14 @@ import android.os.Handler
 import android.os.Looper
 import com.deeplinkly.android_deeplinkly.attribution.EnrichmentSender
 import com.deeplinkly.android_deeplinkly.core.AppOpenReporter
+import com.deeplinkly.android_deeplinkly.core.ConsentStore
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyContext
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
 import com.deeplinkly.android_deeplinkly.core.DeviceProfile
 import com.deeplinkly.android_deeplinkly.core.Logger
 import com.deeplinkly.android_deeplinkly.core.Prefs
+import com.deeplinkly.android_deeplinkly.core.PushProvider
+import com.deeplinkly.android_deeplinkly.core.PushTokenStore
 import com.deeplinkly.android_deeplinkly.core.SdkInfo
 import com.deeplinkly.android_deeplinkly.core.SdkRuntime
 import com.deeplinkly.android_deeplinkly.core.SessionManager
@@ -25,6 +28,8 @@ import com.deeplinkly.android_deeplinkly.handlers.DeepLinkHandler
 import com.deeplinkly.android_deeplinkly.handlers.InstallReferrerHandler
 import com.deeplinkly.android_deeplinkly.network.DeeplinklyNetwork
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
+import com.deeplinkly.android_deeplinkly.privacy.PIIHashing
+import com.deeplinkly.android_deeplinkly.privacy.ConsentState
 import com.deeplinkly.android_deeplinkly.privacy.TrackingPreferences
 import com.deeplinkly.android_deeplinkly.queue.QueueProcessor
 import com.deeplinkly.android_deeplinkly.queue.DeepLinkQueue
@@ -341,8 +346,18 @@ object Deeplinkly {
         state: String? = null,
         zip: String? = null,
         country: String? = null,
+        customData: Map<String, String?>? = null,
     ): Boolean {
         if (!isEnabled) return false
+
+        // Encoded before the rest so a bad map rejects the whole call, which
+        // is the same all-or-nothing contract the twelve typed fields have.
+        val (encodedCustom, customRejection) =
+            DeeplinklyUserData.encodeCustomData(customData)
+        customRejection?.let {
+            Logger.w("Rejected setUserData: ${it.reason}")
+            return false
+        }
 
         val result = DeeplinklyUserData.normalizeAll(
             mapOf(
@@ -357,6 +372,7 @@ object Deeplinkly {
                 DeeplinklyUserData.KEY_STATE to state,
                 DeeplinklyUserData.KEY_ZIP to zip,
                 DeeplinklyUserData.KEY_COUNTRY to country,
+                DeeplinklyUserData.KEY_CUSTOM_DATA to encodedCustom,
             )
         )
         result.rejection?.let {
@@ -392,7 +408,7 @@ object Deeplinkly {
      * Call it on sign-out, or when someone withdraws consent. Unlike letting
      * the values simply stop being sent, this actively erases them: the next
      * enrichment carries each previously-set field as an empty value, which the
-     * backend reads as "null this column" rather than "not reported".
+     * service reads as "null this column" rather than "not reported".
      *
      * The erasure is re-sent until it is delivered, so calling this on a device
      * that is offline still takes effect once it is not.
@@ -411,7 +427,7 @@ object Deeplinkly {
     /**
      * Logs a custom event.
      *
-     * [callback] receives true only when the backend accepted it. Validation
+     * [callback] receives true only when the service accepted it. Validation
      * failures answer false without a network call; see [DeeplinklyEvent] for
      * the rules.
      */
@@ -445,7 +461,7 @@ object Deeplinkly {
         }
         // One id per call, and the same id on every replay of it: the retry
         // queue stores the payload built here, so an event that was delivered
-        // but whose response was lost comes back carrying the id the backend
+        // but whose response was lost comes back carrying the id the service
         // already has and is refused as the duplicate it is. Meta CAPI's
         // `event_id` wants the same value.
         params["_dl_event_id"] = java.util.UUID.randomUUID().toString()
@@ -492,7 +508,7 @@ object Deeplinkly {
      *   forwarded conversion against your own records.
      * @param parameters anything else you want on the event. May not contain
      *   the keys this method sets.
-     * @param callback receives true only when the backend accepted the event.
+     * @param callback receives true only when the service accepted the event.
      */
     @JvmOverloads
     fun logPurchase(
@@ -538,7 +554,7 @@ object Deeplinkly {
     /**
      * Creates a Deeplinkly link from an already-flattened payload.
      *
-     * The Flutter bridge uses this so the map Dart built crosses to the backend
+     * The Flutter bridge uses this so the map Dart built crosses to the service
      * untouched, rather than being parsed into models and rebuilt.
      */
     fun generateLink(payload: Map<String, Any?>, callback: (DeeplinklyResult) -> Unit) {
@@ -611,9 +627,155 @@ object Deeplinkly {
     /** The level currently in force. */
     fun getAttributionLevel(): AttributionLevel = AttributionLevel.current
 
+    // ----------------------------------------------------------------- consent
+
+    /**
+     * Reports the person's advertising-consent answers.
+     *
+     * These travel with every enrichment and are attached to conversions when
+     * they are forwarded to an ad network. Google requires both
+     * [adUserData] and [adPersonalization] to be `GRANTED` before a conversion
+     * for an EEA or UK user may be used, and treats an absent answer
+     * differently from an explicit `UNKNOWN` — so report what you actually
+     * know rather than defaulting.
+     *
+     * ## What this does and does not do
+     *
+     * This tells us what the person agreed to *with your ad networks*. It does
+     * not change what the SDK collects — [setAttributionLevel] is that control,
+     * and the two are independent on purpose: an app can hold consent to
+     * describe the device while holding none to personalise ads on it, and the
+     * reverse.
+     *
+     * Consent survives sign-out and survives a backup restore onto a new
+     * device. [clearUserData] does not touch it: signing out is not
+     * withdrawing consent. To record a withdrawal, call this again with
+     * [ConsentState.DENIED] — that is a value the forwarder acts on, where
+     * simply forgetting the answer would read as "this app has no consent
+     * model" and is a weaker statement, not a stronger one.
+     *
+     * ## Merging
+     *
+     * Each call merges. An argument left null is left as it was, so you can
+     * report the EEA determination at launch and the two answers when your
+     * banner is answered. Re-reporting an unchanged answer costs nothing — it
+     * is detected and no enrichment is sent.
+     *
+     * @param adUserData whether user data may be sent to ad networks for
+     *   measurement. Google Consent Mode's `ad_user_data`.
+     * @param adPersonalization whether the data may be used to personalise
+     *   advertising. Google Consent Mode's `ad_personalization`.
+     * @param isEea whether you consider this person in scope for GDPR. Your app
+     *   knows this; we do not, and a geo-IP guess is not a consent record.
+     * @return false only if the SDK is not initialised.
+     */
+    @JvmOverloads
+    fun setConsent(
+        adUserData: ConsentState? = null,
+        adPersonalization: ConsentState? = null,
+        isEea: Boolean? = null,
+    ): Boolean {
+        if (!isEnabled) return false
+
+        // Nothing changed: the banner reported the same answer it did last
+        // launch, which is the common case. Storing it again would be harmless;
+        // sending an enrichment for it every time would not.
+        if (!ConsentStore.merge(adUserData, adPersonalization, isEea)) return true
+
+        SdkRuntime.ioLaunch {
+            // force, for the same reason setUserData forces: a consent answer
+            // has nothing to do with whether a link brought this person here,
+            // and gating it on attribution evidence would mean organic installs
+            // never reported consent at all.
+            EnrichmentSender.sendOnce(
+                emptyMap(), EnrichmentSender.CONSENT_SOURCE, apiKey, force = true
+            )
+        }
+        return true
+    }
+
+    // ------------------------------------------------------------ push / uninstall
+
+    /**
+     * Supplies the device's push token so uninstalls can be measured.
+     *
+     * Neither Android nor iOS notifies a server when an app is removed. Every
+     * measurement provider detects it the same way: send a silent, contentless
+     * push periodically and read the failure — FCM answers `UNREGISTERED` and
+     * APNs answers 410 once the app is gone. Handing us the token is the whole
+     * of the app's part; nothing is displayed to the user and no notification
+     * permission is required for a data-only message.
+     *
+     * Call it whenever your `FirebaseMessagingService.onNewToken` fires, and
+     * once at launch with the current token. Re-reporting an unchanged token
+     * costs nothing.
+     *
+     * ## Level
+     *
+     * `push_token` is a `full`-tier signal: it is a unique, stable, per-install
+     * identifier that a server can address, which is what that tier means. An
+     * app running at [AttributionLevel.REDUCED] or below does not report it and
+     * does not get uninstall numbers. That is the level working as documented,
+     * not a defect.
+     *
+     * Pass null to forget the token — for instance when the person signs out of
+     * push entirely.
+     *
+     * @param provider which service the token addresses. Defaults to
+     *   [PushProvider.FCM], which is what an Android token normally is.
+     * @return false only if the SDK is not initialised.
+     */
+    @JvmOverloads
+    fun setPushToken(token: String?, provider: PushProvider = PushProvider.FCM): Boolean {
+        if (!isEnabled) return false
+        if (!PushTokenStore.set(token, provider)) return true
+
+        SdkRuntime.ioLaunch {
+            EnrichmentSender.sendOnce(
+                emptyMap(), EnrichmentSender.PUSH_TOKEN_SOURCE, apiKey, force = true
+            )
+        }
+        return true
+    }
+
     // ------------------------------------------------------------------- debug
 
     /** Turns on verbose logcat output under the `Deeplinkly` tag. */
+    /**
+     * Hash the identifying fields on this device before they are sent.
+     *
+     * Off by default. With it on, `user_email`, `user_phone`,
+     * `user_first_name` and `user_last_name` are SHA-256 hashed here and the
+     * plaintext never leaves the device. Everything else is unaffected, and
+     * what is stored locally is still what you supplied, so turning this back
+     * off restores the previous behaviour.
+     *
+     * **This costs attribution quality, and the trade is yours to make.** A
+     * digest is computed once, under one normalisation, and advertising
+     * destinations do not agree about phone formatting — so a conversion
+     * forwarded to a destination whose rules differ will not match. Without
+     * hashing the service normalises per destination from the value you sent;
+     * with it, that value is gone and it cannot. Enable this when a compliance
+     * requirement says plaintext must not reach a processor, not by default.
+     *
+     * Phone numbers are normalised by discarding non-digits. That folds
+     * `+44 20 7946 0000` and `442079460000` together but does not understand
+     * trunk prefixes, so send one consistent format.
+     *
+     * Only the four fields above are hashed. Gender, country and date of birth
+     * are not: their value ranges are small enough to reverse a digest by
+     * enumeration, so hashing them would cost storage and buy nothing.
+     */
+    fun setPIIHashingEnabled(enabled: Boolean): Boolean {
+        if (!isEnabled) return false
+        PIIHashing.setEnabled(enabled)
+        Logger.d("PII hashing ${if (enabled) "enabled" else "disabled"}")
+        return true
+    }
+
+    /** Whether [setPIIHashingEnabled] is on. Off unless it was turned on. */
+    fun isPIIHashingEnabled(): Boolean = PIIHashing.isEnabled()
+
     fun setDebugMode(enabled: Boolean) = Logger.setDebugMode(enabled)
 
     /** The SDK version, e.g. `1.9.0`. */

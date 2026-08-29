@@ -23,14 +23,14 @@ class DeeplinklyDeepLink internal constructor(
      */
     val source: String,
 ) {
-    /** Backend click id, or null when the backend did not recognise the click. */
+    /** Service click id, or null when the service did not recognise the click. */
     val clickId: String?
         get() = raw["click_id"] as? String
 
     /**
      * The link's own parameters.
      *
-     * Populated from the backend when `/resolve` answered, and from the URL
+     * Populated from the service when `/resolve` answered, and from the URL
      * itself when it could not be reached, so a single read path covers both.
      */
     @Suppress("UNCHECKED_CAST")

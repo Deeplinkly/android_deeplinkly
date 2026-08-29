@@ -9,7 +9,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * The rate limit here is not a nicety. TenantUser is rewritten on every open
+ * The rate limit here is not a nicety. the person's record is rewritten on every open
  * and is documented as the hottest write path in the product, so an
  * unthrottled ping would multiply that by the number of foreground transitions
  * per session — dozens, on a chat-style app.

@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * forwards it — which makes the ping opt-in by accident, and late. This fires
  * on the 0→1 started-activity transition, before Flutter has attached.
  *
- * Rate-limited hard. `TenantUser` is rewritten on every open and is documented
+ * Rate-limited hard. the person's record is rewritten on every open and is documented
  * as the hottest write path in the product; an unthrottled ping would multiply
  * that by the number of foreground transitions per session, which on a
  * chat-style app is dozens.

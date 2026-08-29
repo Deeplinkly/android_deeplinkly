@@ -75,6 +75,18 @@ internal object InstallIdentity {
         // their conversions on the new phone. One key, not eleven — see
         // UserDataStore for why that matters to this list.
         "dl_user_data",
+        // The person's advertising-consent answers. Squarely what this list is
+        // for: dropping them silently reverts the record to "this app has no
+        // consent model", which reads downstream as permission we were never
+        // given. Same argument as dl_attribution_level, one layer up.
+        //
+        // Note what is deliberately NOT here: dl_push_token and
+        // dl_push_provider. A token restored onto a different phone addresses
+        // the old device, so keeping it either manufactures an uninstall that
+        // did not happen or points the prober at someone else's handset. The
+        // host app re-registers on launch, so the right value arrives seconds
+        // after the wrong one is dropped. See PushTokenStore.
+        "dl_consent",
     )
 
     /**

@@ -13,7 +13,7 @@ package com.deeplinkly.android_deeplinkly
  * parameter budget, which is right for the SDK's own bookkeeping and wrong for
  * revenue: the amount of a sale is the first thing someone reading their own
  * purchase events wants to see. They cost a parameter each and they show up,
- * like any other parameter — the backend simply also lifts `value` and
+ * like any other parameter — the service simply also lifts `value` and
  * `currency` into typed columns on the way in.
  */
 object DeeplinklyPurchase {

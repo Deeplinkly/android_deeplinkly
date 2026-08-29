@@ -17,7 +17,7 @@ import kotlin.concurrent.withLock
 
 /**
  * High-reliability queue for deep links that need to be:
- * 1. Resolved from backend (network retry)
+ * 1. Resolved from service (network retry)
  * 2. Delivered to Flutter (when Flutter is ready)
  * 
  * Thread-safe and persistent across app restarts.
@@ -44,7 +44,7 @@ object DeepLinkQueue {
         Collections.synchronizedSet(mutableSetOf())
 
     /**
-     * Resolves currently being sent to the backend by somebody.
+     * Resolves currently being sent to the service by somebody.
      *
      * The delivery queue has had [inFlightDeliveries] for a while; the resolve
      * queue had no equivalent, and every handler enqueues its PendingResolve
@@ -115,7 +115,7 @@ object DeepLinkQueue {
         data.filterKeys { it in QUEUEABLE_KEYS }
 
     /**
-     * Represents a deep link that needs backend resolution
+     * Represents a deep link that needs service resolution
      */
     data class PendingResolve(
         val clickId: String?,
@@ -278,7 +278,7 @@ object DeepLinkQueue {
     }
     
     /**
-     * Enqueue a deep link that needs backend resolution
+     * Enqueue a deep link that needs service resolution
      */
     fun enqueueResolve(pending: PendingResolve) = lock.withLock {
         val queue = getResolveQueue().toMutableList()

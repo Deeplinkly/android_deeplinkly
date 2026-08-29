@@ -13,10 +13,10 @@ import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
 import com.deeplinkly.android_deeplinkly.queue.DeepLinkQueue
 
 object DeepLinkHandler {
-    /** The mechanism this handler reports, to the backend and to the host. */
+    /** The mechanism this handler reports, to the service and to the host. */
     const val SOURCE = "deep_link"
 
-    /** Same link, but delivered without the backend having resolved it. */
+    /** Same link, but delivered without the service having resolved it. */
     const val FALLBACK_SOURCE = "deep_link_fallback"
 
     /** Marks an intent this process has already turned into a delivery. */
@@ -71,18 +71,18 @@ object DeepLinkHandler {
      * A link that came through the redirect always carries a click_id, so the
      * code is only ever needed for the App Link bypass: the OS routing
      * `https://<link domain>/<code>` straight to the app, which means the
-     * backend never saw the click and has no ClickEvent for it yet.
+     * service never saw the click and has no a click record for it yet.
      *
      * Treating *any* first path segment as a code - which is what this used to
      * do - meant every VIEW intent the app handled was resolved against the
-     * backend. For an app with its own custom-scheme routes,
+     * service. For an app with its own custom-scheme routes,
      * `myapp://settings/notifications` was resolved as code "notifications",
      * came back 404, and 404 is terminal: the handler delivered a fallback, so
      * opening an in-app screen fired onDeepLink carrying a URI that had nothing
      * to do with Deeplinkly.
      *
      * Custom schemes are therefore out, and they lose nothing - the intent://
-     * fallback the backend builds is `<scheme>://open?click_id=...`, which is
+     * fallback the service builds is `<scheme>://open?click_id=...`, which is
      * matched on the click_id and has no path segment to read anyway.
      *
      * For http(s), naming the link domains in the manifest is what makes this
@@ -151,14 +151,14 @@ object DeepLinkHandler {
                 clickId?.let { attributionData["click_id"] = it }
                 if (clickId == null && code != null) attributionData["code"] = code
                 // Name the mechanism. InstallReferrerHandler carries the referrer
-                // itself, and this one alone left the backend to infer it from
+                // itself, and this one alone left the service to infer it from
                 // the absence of one. An inferred claim is treated as a guess and
                 // can be overwritten by any later report, so a genuine deep link
                 // opened from the OS was the weakest claim we made rather than
                 // one of the strongest. Mirrors iOS, which has always sent this.
                 attributionData["source"] = SOURCE
                 // When the link was actually opened, so a sample that only
-                // reaches the backend after several retries is still dated to
+                // reaches the service after several retries is still dated to
                 // the event rather than to the retry that finally succeeded.
                 //
                 // The key is the catalogued one. It used to be "event_at",
@@ -191,8 +191,8 @@ object DeepLinkHandler {
                 }
                 try {
                     // Try immediate resolution with fast retry. localParams
-                    // rides along: resolving by `code` makes the backend create
-                    // the ClickEvent, and it reads the UTMs off the query
+                    // rides along: resolving by `code` makes the service create
+                    // the a click record, and it reads the UTMs off the query
                     // string - see DeeplinklyNetwork.resolveUrl.
                     //
                     // No device fingerprint is sent. /resolve reads click_id and
@@ -279,7 +279,7 @@ object DeepLinkHandler {
                     }
 
                     // Terminal: a revoked key, a suspended tenant, or a code the
-                    // backend does not have. Retrying is pointless, so deliver
+                    // service does not have. Retrying is pointless, so deliver
                     // what we can read off the URI and stop.
                     Logger.e("Resolve rejected (terminal), using fallback with preserved data", e)
 

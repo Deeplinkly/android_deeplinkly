@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
+import android.os.StatFs
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.WindowManager
@@ -56,6 +57,9 @@ object DeviceProfile {
     private const val KEY_APPSET_ATTEMPTED = "dl_appset_attempted"
 
     private const val APPSET_TIMEOUT_SECONDS = 2L
+
+    /** Binary GB, matching what a device's storage is actually sold and sized in. */
+    private const val BYTES_PER_GB = 1024L * 1024L * 1024L
 
     /** Emulator-only ANDROID_ID, returned by a whole generation of AVDs. */
     private const val KNOWN_BAD_ANDROID_ID = "9774d56d682e549c"
@@ -138,6 +142,39 @@ object DeviceProfile {
             Build.VERSION.RELEASE ?: "",
         )
         return hash(parts.joinToString("|"))
+    }
+
+    /**
+     * Total size of the volume the app's data lives on, in whole gigabytes.
+     *
+     * Meta's `extinfo` array has a slot for this and we have never filled it.
+     * Reported here rather than in the dynamic block because the size of a
+     * disk does not change while an app is installed; [freeStorageGb] is the
+     * half that does, and lives in DynamicSignals for that reason.
+     *
+     * **Whole gigabytes, deliberately.** StatFs reports bytes, and a byte
+     * count of free-or-total space is a high-entropy value that would make a
+     * device recognisable across installs — which is the one thing this SDK
+     * says it does not do. Rounding to GB leaves roughly the granularity Meta
+     * documents for the field and takes the entropy with it.
+     *
+     * Android only. iOS reads no disk space at all: every approved reason for
+     * `NSPrivacyAccessedAPICategoryDiskSpace` carries the clause that the
+     * value may not be sent off-device, so there is no version of this that
+     * ships there. See the bundled privacy manifest in the iOS SDK.
+     */
+    private fun totalStorageGb(): Long? = storageGb { it.totalBytes }
+
+    /** Shared plumbing for the two storage readings. Null on any failure. */
+    internal fun storageGb(read: (StatFs) -> Long): Long? = try {
+        val dir = DeeplinklyContext.app.filesDir ?: return null
+        val bytes = read(StatFs(dir.absolutePath))
+        // Truncating rather than rounding: a device reporting "0 GB free" is
+        // honest about a full disk in a way that "1 GB" would not be.
+        bytes / BYTES_PER_GB
+    } catch (e: Exception) {
+        Logger.w("Storage size unavailable: ${e.message}")
+        null
     }
 
     /** FNV-1a, 64-bit. Not a security boundary — just a short stable key. */
@@ -227,6 +264,7 @@ object DeviceProfile {
         out["cpu_abi"] = Build.SUPPORTED_ABIS?.firstOrNull()
         out["hardware_concurrency"] = Runtime.getRuntime().availableProcessors().toString()
         out["is_emulator"] = isEmulator().toString()
+        out["total_storage_gb"] = totalStorageGb()?.toString()
 
         val metrics = screenMetrics()
         out["screen_width"] = metrics.widthPixels.toString()

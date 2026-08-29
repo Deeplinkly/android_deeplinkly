@@ -1,6 +1,7 @@
 // FILE: com/deeplinkly/android_deeplinkly/attribution/EnrichmentSender.kt
 package com.deeplinkly.android_deeplinkly.attribution
 
+import com.deeplinkly.android_deeplinkly.core.ConsentStore
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
 import com.deeplinkly.android_deeplinkly.core.DeviceProfile
 import com.deeplinkly.android_deeplinkly.core.DynamicSignals
@@ -8,6 +9,7 @@ import com.deeplinkly.android_deeplinkly.core.Logger
 import com.deeplinkly.android_deeplinkly.core.Prefs
 import com.deeplinkly.android_deeplinkly.DeeplinklyUserData
 import com.deeplinkly.android_deeplinkly.core.UserDataStore
+import com.deeplinkly.android_deeplinkly.privacy.PIIHashing
 import com.deeplinkly.android_deeplinkly.network.DeeplinklyNetwork
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +37,7 @@ object EnrichmentSender {
     private val ATTRIBUTION_KEYS = listOf(
         "click_id", "code", "utm_source", "utm_medium", "utm_campaign",
         "gclid", "fbclid", "ttclid", "gbraid", "wbraid",
+        "gad_source", "gad_campaignid",
     )
 
     /** What makes one enrichment a different report from another. */
@@ -42,6 +45,31 @@ object EnrichmentSender {
 
     /** The source `setUserData`/`clearUserData` report under. */
     internal const val USER_DATA_SOURCE = "user_data"
+
+    /** The source `setConsent` reports under. */
+    internal const val CONSENT_SOURCE = "consent"
+
+    /** The source `setPushToken` reports under. */
+    internal const val PUSH_TOKEN_SOURCE = "push_token"
+
+    /**
+     * Sources whose dedupe key must include the payload's own content, and
+     * which keys make up that content.
+     *
+     * A source is in here when the thing being reported is the payload rather
+     * than the link — see [dedupeKey]. Derived names rather than literals
+     * wherever the owning type already publishes them, so a twelfth user field
+     * or a fourth consent answer joins this automatically.
+     */
+    private val CONTENT_KEYED_SOURCES: Map<String, Set<String>> = mapOf(
+        USER_DATA_SOURCE to DeeplinklyUserData.KEYS,
+        CONSENT_SOURCE to setOf(
+            ConsentStore.KEY_AD_USER_DATA,
+            ConsentStore.KEY_AD_PERSONALIZATION,
+            ConsentStore.KEY_IS_EEA,
+        ),
+        PUSH_TOKEN_SOURCE to setOf("push_token", "push_provider"),
+    )
 
     /**
      * How a payload leaves the device, and whether it arrived.
@@ -85,10 +113,17 @@ object EnrichmentSender {
             //
             // Empty values are meaningful here and must survive — see
             // UserDataStore.clear.
-            payload.putAll(UserDataStore.get())
+            // Hashed here, if the app asked for it, rather than in the store:
+            // what is kept on the device stays as supplied so the switch can be
+            // turned back off. The raw value still never leaves the device.
+            payload.putAll(PIIHashing.apply(UserDataStore.get()))
+            // Consent and the push token are not read here: they are `dynamic`
+            // scope and come from DynamicSignals.assemble above, which is what
+            // keeps the catalogue's scope and the producing collector the same
+            // fact. iOS pins that with SignalCoverageTests.
             payload.putAll(attributionData)
 
-            // Reported so the backend can tell a thin payload from a missing
+            // Reported so the service can tell a thin payload from a missing
             // one. Both must survive MINIMAL — explaining why a payload is
             // small is the one thing that stays useful at every level.
             payload["collected_at"] = isoUtc(System.currentTimeMillis())
@@ -147,18 +182,21 @@ object EnrichmentSender {
         // made a hashed key differ on every launch and dedupe nothing.
         val base =
             if (identity.isEmpty()) "${source}_enriched" else "${source}_enriched_$identity"
-        // For this one source, the user data *is* what is being reported, so it
-        // has to be part of what makes two reports different. Without it, a
-        // second setUserData call under the same custom_user_id — adding an
-        // address to an email already sent, the common case — produces the same
-        // key as the first and is latched away, never reaching us.
+        // For these sources the payload *is* what is being reported, so its
+        // content has to be part of what makes two reports different. Without
+        // it, a second setUserData call under the same custom_user_id — adding
+        // an address to an email already sent, the common case — produces the
+        // same key as the first and is latched away, never reaching us. The
+        // same is true of a consent answer that changes from granted to denied
+        // and of a rotated push token: exactly the updates that must not be
+        // dropped are the ones the identity-only key cannot tell apart.
         //
         // A digest rather than the values, because this string becomes the name
-        // of a SharedPreferences key: writing someone's email address into one
-        // would put it somewhere neither clearUserData nor the tombstone can
-        // reach.
-        if (source != USER_DATA_SOURCE) return base
-        val fingerprint = DeeplinklyUserData.KEYS
+        // of a SharedPreferences key: writing someone's email address — or a
+        // push token — into one would put it somewhere neither clearUserData
+        // nor the tombstone can reach.
+        val contentKeys = CONTENT_KEYED_SOURCES[source] ?: return base
+        val fingerprint = contentKeys
             .sorted()
             .mapNotNull { key -> data[key]?.let { "$key=$it" } }
             .joinToString("&")

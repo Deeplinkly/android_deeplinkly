@@ -145,13 +145,28 @@ class DynamicSignalsTest {
     }
 
     @Test
-    fun `memory and storage are not collected`() {
-        // Neither Branch nor Linkrunner collects either, and on iOS disk space
-        // is a required-reason API that forbids sending the value off-device.
+    fun `memory is not collected, and free space is reported in whole gigabytes`() {
+        // This test used to say "memory and storage are not collected" and
+        // still passed after catalogue 10 added free_storage_gb — because it
+        // asserted on `device_storage_mb`, a name this SDK never used. It was
+        // vacuously true and read as a decision nobody had revisited.
+        //
+        // Memory genuinely is not collected: nothing downstream wants it. Disk
+        // space now is, on Android only, because Meta's extinfo array has two
+        // slots for it. The iOS half stays impossible — every approved reason
+        // for NSPrivacyAccessedAPICategoryDiskSpace forbids sending the value
+        // off-device — and is pinned in the iOS SDK's own catalogue tests.
         val assembled = DynamicSignals.assemble(DeviceProfile.get())
 
         assertFalse(assembled.containsKey("device_memory_mb"))
-        assertFalse(assembled.containsKey("device_storage_mb"))
+
+        val free = assembled["free_storage_gb"]
+        assertNotNull("free_storage_gb was not collected", free)
+        val gb = free!!.toLong()
+        assertTrue("expected whole gigabytes, got $gb", gb >= 0)
+        // Raw bytes here would be a device-recognisable high-entropy value,
+        // which is the thing the rounding exists to prevent.
+        assertTrue("looks like raw bytes rather than GB: $gb", gb < 1_000_000L)
     }
 
     @Test

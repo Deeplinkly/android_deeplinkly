@@ -57,7 +57,7 @@ class UserDataStoreTest {
 
     /**
      * The whole reason clearing is not a delete. An absent key reads, at the
-     * backend, as "not reported" and is skipped — so dropping the blob would
+     * service, as "not reported" and is skipped — so dropping the blob would
      * leave the row on our side holding the email forever. An empty value is
      * what says "erase this".
      */
@@ -80,7 +80,7 @@ class UserDataStoreTest {
         )
     }
 
-    /** Nothing was ever set, so there is nothing to ask the backend to erase. */
+    /** Nothing was ever set, so there is nothing to ask the service to erase. */
     @Test
     fun `clearing an empty store leaves it empty`() {
         UserDataStore.clear()

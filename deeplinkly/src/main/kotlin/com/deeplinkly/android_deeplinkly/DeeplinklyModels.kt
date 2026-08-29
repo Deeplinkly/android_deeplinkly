@@ -5,7 +5,7 @@ package com.deeplinkly.android_deeplinkly
  *
  * [toPayload] produces the same snake_case wire keys the Dart models produce,
  * so a link generated natively and one generated through Flutter are
- * indistinguishable to the backend.
+ * indistinguishable to the service.
  */
 data class DeeplinklyContent(
     /** Stable identifier for the thing being linked, e.g. `product/sku_42`. */

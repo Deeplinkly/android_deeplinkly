@@ -49,10 +49,14 @@ class InstallIdentityTest {
             .putString("dl_static_profile", """{"device_model":"Pixel 6"}""")
             .putString("dl_referrer_click_at", "2024-01-01T00:00:00Z")
             .putLong("dl_event_seq", 42L)
+            // Addresses the old handset, so it must not survive.
+            .putString("dl_push_token", "token-from-old-phone")
+            .putString("dl_push_provider", "fcm")
             // Decisions, not install state.
             .putString("dl_attribution_level", "reduced")
             .putBoolean("tracking_disabled", true)
             .putString("custom_user_id", "user-123")
+            .putString("dl_consent", """{"consent_ad_user_data":"granted"}""")
             .commit()
     }
 
@@ -108,6 +112,40 @@ class InstallIdentityTest {
         assertEquals("reduced", prefs.getString("dl_attribution_level", null))
         assertTrue(prefs.getBoolean("tracking_disabled", false))
         assertEquals("user-123", prefs.getString("custom_user_id", null))
+    }
+
+    /**
+     * The advertising-consent record is a decision, so it survives — same
+     * argument as the attribution level one layer up. Losing it would silently
+     * revert the row to "this app has no consent model", which reads downstream
+     * as permission we were never given.
+     */
+    @Test
+    fun `a restore preserves the advertising consent record`() {
+        seedRestoredInstall()
+
+        InstallIdentity.enforce(prefs, deviceB)
+
+        assertEquals(
+            """{"consent_ad_user_data":"granted"}""",
+            prefs.getString("dl_consent", null),
+        )
+    }
+
+    /**
+     * The other half, and the one that is easy to get backwards: a push token
+     * is install state, not a decision. Restored onto a different handset it
+     * addresses the old device — so keeping it either manufactures an uninstall
+     * that never happened or points the prober at someone else's phone.
+     */
+    @Test
+    fun `a restore drops the push token, which belongs to the old device`() {
+        seedRestoredInstall()
+
+        InstallIdentity.enforce(prefs, deviceB)
+
+        assertNull(prefs.getString("dl_push_token", null))
+        assertNull(prefs.getString("dl_push_provider", null))
     }
 
     @Test

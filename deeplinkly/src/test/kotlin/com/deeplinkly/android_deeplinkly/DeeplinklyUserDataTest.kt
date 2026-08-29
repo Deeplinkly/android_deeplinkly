@@ -21,7 +21,7 @@ class DeeplinklyUserDataTest {
         val (value, rejection) = normalize(DeeplinklyUserData.KEY_EMAIL, "  Ada@Example.COM ")
         assertNull(rejection)
         // Not lowercased. Lowercasing is Meta's rule, not a fact about the
-        // address, and the backend can apply it per destination only if we did
+        // address, and the service can apply it per destination only if we did
         // not already throw the original away.
         assertEquals("Ada@Example.COM", value)
     }

@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.telephony.TelephonyManager
+import com.deeplinkly.android_deeplinkly.privacy.PIIHashing
 import com.google.android.gms.ads.identifier.AdvertisingIdClient
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -103,10 +104,29 @@ object DynamicSignals {
         out["advertising_id"] = advertisingId
 
         // True when we have no durable identifier for this device at all, which
-        // is a data-quality fact the backend would otherwise have to infer from
+        // is a data-quality fact the service would otherwise have to infer from
         // the absence of keys it cannot distinguish from a level downgrade.
         out["unidentified_device"] =
             (advertisingId.isNullOrBlank() && staticProfile["android_id"].isNullOrBlank()).toString()
+
+        // The host app's own consent answers, and the push token that uninstall
+        // measurement runs on. Both are host-supplied rather than read off the
+        // device, but both are genuinely dynamic — a banner re-answered, a
+        // rotated token — so they belong here rather than in the static
+        // profile, which would report install-day state for months.
+        //
+        // Collected here rather than merged in EnrichmentSender so that the
+        // scope in the catalogue and the collector producing the key stay the
+        // same fact. iOS pins that with SignalCoverageTests, which is what
+        // caught these two when they were merged one layer up.
+        out.putAll(ConsentStore.get())
+        out.putAll(PushTokenStore.get())
+        // Emitted here rather than where the hashing happens, for the same
+        // reason: the key is `dynamic` in the catalogue, so a collector has to
+        // produce it or SignalCoverageTests fails. EnrichmentSender reads the
+        // same store when it decides whether to hash, so the flag and the
+        // payload cannot disagree.
+        out[PIIHashing.KEY_PII_HASHING_ENABLED] = PIIHashing.isEnabled().toString()
 
         // --- locale and clock ---
         val config = ctx.resources.configuration
@@ -129,6 +149,12 @@ object DynamicSignals {
         out["ui_mode_night"] = isNightMode(config).toString()
         out["device_carrier"] = carrierName()
         out["local_ip"] = localIpAddress()
+        // Dynamic, not static: DeviceProfile caches its map until the stamp
+        // changes — SDK version, catalogue version, app version, fingerprint
+        // or OS release — so free space collected there would be frozen at
+        // whatever it was on the day of the install, for months. The disk's
+        // total size sits in the static profile, where it belongs.
+        out["free_storage_gb"] = DeviceProfile.storageGb { it.availableBytes }?.toString()
 
         return out
     }

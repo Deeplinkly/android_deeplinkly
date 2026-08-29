@@ -164,14 +164,14 @@ dropping it.
 
 ```kotlin
 class DeeplinklyDeepLink {
-    val clickId: String?            // null if the backend did not recognise the click
+    val clickId: String?            // null if the service did not recognise the click
     val params: Map<String, Any?>   // the link's own parameters
     val source: String              // deep_link | deep_link_fallback | install_referrer
     val raw: Map<String, Any?>      // the payload exactly as resolved
 }
 ```
 
-`params` carries the link's parameters whether they came back from the backend
+`params` carries the link's parameters whether they came back from the service
 or, when it could not be reached, from the URL itself — so a single read path
 covers both.
 
@@ -213,7 +213,7 @@ nothing is stored — so you never have to guess which of the values took.
 Values are sent as you supply them and hashed only when a conversion is
 forwarded. On-device hashing would look safer and buy nothing: the digest of a
 normalised email is exactly the value Meta matches on, so anyone holding it
-holds the match key. Keeping the plaintext is also what lets the backend
+holds the match key. Keeping the plaintext is also what lets the service
 normalise per destination, which Meta and Google disagree about.
 
 Supply only what your own privacy policy and consent flow allow — the SDK
@@ -238,7 +238,7 @@ Deeplinkly.clearUserData()
 ```
 
 This is not merely "stop sending": the next enrichment reports each
-previously-set field as empty, which the backend reads as "null this column".
+previously-set field as empty, which the service reads as "null this column".
 The erasure is re-sent until it is delivered, so calling it on a device that is
 offline still takes effect once it is not. To clear only the id, call
 `setUserId(null)`.
@@ -266,7 +266,7 @@ number, not `"49.99"`. Constraints, enforced before anything is sent:
 Every event also carries a client-generated event id. It is Meta CAPI's
 `event_id`, and it is what makes a replay off the retry queue idempotent: an
 event that was delivered but whose response was lost comes back carrying an id
-the backend already has, and is refused rather than counted twice.
+the service already has, and is refused rather than counted twice.
 
 ## Purchases
 
@@ -319,7 +319,7 @@ Deeplinkly.generateLink(
 `DeeplinklyLinkOptions` accepts `tags: List<String>`. A failed
 `DeeplinklyResult` exposes `errorCode` and `errorMessage`.
 
-If you already have the backend payload in its flat, snake-case wire format,
+If you already have the service payload in its flat, snake-case wire format,
 you can bypass the models:
 
 ```kotlin

@@ -75,8 +75,8 @@ class DeeplinklyNetworkTest {
     // --- resolveUrl -------------------------------------------------------
 
     /**
-     * Resolving by code makes the backend *create* the ClickEvent, and
-     * create_click_event reads UTMs and ad-click ids straight off request.GET.
+     * Resolving by code makes the service *create* the a click record, and
+     * the resolve endpoint reads UTMs and ad-click ids straight off request.GET.
      * They used to be left behind entirely, so every UTM on a link that opened
      * through a verified App Link was lost.
      */
@@ -99,7 +99,7 @@ class DeeplinklyNetworkTest {
         assertTrue(url, url.contains("utm_campaign=spring+sale"))
     }
 
-    /** The host app's own query parameters are none of the backend's business. */
+    /** The host app's own query parameters are none of the service's business. */
     @Test
     fun `resolve url forwards only attribution params`() {
         val url = DeeplinklyNetwork.resolveUrl(
@@ -172,7 +172,7 @@ class DeeplinklyNetworkTest {
     // --- generateLinkResult ----------------------------------------------
 
     @Test
-    fun `success maps url even when backend omits the success flag`() {
+    fun `success maps url even when service omits the success flag`() {
         // Older backends answer with a bare {"url": ...}; the flag has to be
         // derived or DeeplinklyResult reports a failure alongside a good URL.
         val response = JSONObject().put("url", "https://d.example/abc").put("_status_code", 200)
@@ -183,7 +183,7 @@ class DeeplinklyNetworkTest {
     }
 
     @Test
-    fun `success passes through when backend sends the success flag`() {
+    fun `success passes through when service sends the success flag`() {
         val response = JSONObject()
             .put("success", true)
             .put("url", "https://d.example/abc")
@@ -202,7 +202,7 @@ class DeeplinklyNetworkTest {
     }
 
     @Test
-    fun `billing failure surfaces the backend error code`() {
+    fun `billing failure surfaces the service error code`() {
         val response = JSONObject()
             .put("code", "ER_011")
             .put("message", "Account paused for billing.")

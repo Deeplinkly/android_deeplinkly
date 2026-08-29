@@ -82,7 +82,7 @@ private fun unwrapJsonValue(value: Any?): Any? = when (value) {
 object DeeplinklyNetwork {
     const val RESOLVE_CLICK_ENDPOINT = DomainConfig.RESOLVE_CLICK_ENDPOINT
 
-    /** Backend /log-event returns 200 for accepted payloads; treat full 2xx as success. */
+    /** Service /log-event returns 200 for accepted payloads; treat full 2xx as success. */
     private fun isHttpSuccess(code: Int) = code in 200..299
 
     /**
@@ -92,7 +92,7 @@ object DeeplinklyNetwork {
      * collections, which is not guaranteed across every org.json implementation the
      * SDK can run against. Converting explicitly keeps nested maps and lists as real
      * JSON structures instead of their Java toString() form ("{sku=A1}"), which the
-     * backend would then store as an opaque string.
+     * service would then store as an opaque string.
      */
     internal fun toJsonObject(map: Map<*, *>): JSONObject {
         val out = JSONObject()
@@ -112,7 +112,7 @@ object DeeplinklyNetwork {
     /**
      * Normalizes /generate-url into the shape DeeplinklyResult expects.
      *
-     * The backend's success body is `{"success": true, "url": ...}`, but older
+     * The service's success body is `{"success": true, "url": ...}`, but older
      * deployments answer with a bare `{"url": ...}`. Returning the raw body meant
      * `DeeplinklyResult.success` read null and reported failure alongside a
      * perfectly good URL, so the flag is derived here rather than trusted.
@@ -190,7 +190,7 @@ object DeeplinklyNetwork {
     }
 
     /**
-     * True when the backend did not recognise the click id we asked about.
+     * True when the service did not recognise the click id we asked about.
      *
      * /resolve answers an unknown click_id with HTTP 200 and
      * `{"click_id": null, "params": {}, "stale": true}` rather than a 404, so
@@ -221,7 +221,7 @@ object DeeplinklyNetwork {
      * invisible to any app written against a resolved link - the link arrived
      * carrying nothing the app knew how to read. Fallbacks now keep the same
      * `{click_id, params}` envelope, leaving Dart one shape to handle whether or
-     * not the backend answered.
+     * not the service answered.
      */
     fun fallbackPayload(
         clickId: String?,
@@ -234,24 +234,31 @@ object DeeplinklyNetwork {
     )
 
     /**
-     * Attribution keys the backend surfaces inside the resolve response's "params".
+     * Attribution keys the service surfaces inside the resolve response's "params".
      *
-     * `gbraid`/`wbraid` are listed ahead of the backend, which does not yet
-     * persist either on ClickEvent. On Android they arrive anyway: the raw
-     * `install_referrer` ships whole and the server re-parses it. Listing them
-     * keeps the table identical to iOS, where the same pair is the only strong
-     * Google signal there is.
+     * `gbraid`/`wbraid` are the iOS-critical pair: a Google App campaign sends
+     * gbraid *because* there is no IDFA to match on. On Android they arrive
+     * anyway — the raw `install_referrer` ships whole and the server re-parses
+     * it — but the table is kept identical across platforms so a signal cannot
+     * die on one and not the other.
+     *
+     * `gad_source`/`gad_campaignid` joined them in catalogue 10. They are
+     * weaker than a click id and they are not redundant: roughly half of the
+     * Google Ads rows in production carry `gad_source` with no `utm_source` at
+     * all, which is the population that would otherwise look like organic
+     * traffic.
      */
     private val ATTRIBUTION_KEYS = listOf(
         "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "gclid", "fbclid", "ttclid", "gbraid", "wbraid"
+        "gclid", "fbclid", "ttclid", "gbraid", "wbraid",
+        "gad_source", "gad_campaignid"
     )
 
     /**
      * The click-time attribution params worth forwarding to /resolve.
      *
-     * Only the keys the backend actually reads (_get_utm and
-     * _get_tracking_param in links/views.py). The link's other query parameters
+     * Only the keys the service actually reads (_get_utm and
+     * the resolve endpoint in the service). The link's other query parameters
      * are the host app's own data and have no business being recorded against
      * the click.
      */
@@ -271,8 +278,8 @@ object DeeplinklyNetwork {
      * Two things this centralises. The click id and code are percent-encoded
      * rather than pasted in raw, which they were at all three call sites. And
      * the click-time attribution params ride along: resolving by `code` makes
-     * the backend *create* the ClickEvent (an App Link opened the app directly,
-     * so the server never saw the click), and create_click_event reads UTMs and
+     * the service *create* the a click record (an App Link opened the app directly,
+     * so the server never saw the click), and the resolve endpoint reads UTMs and
      * ad-click ids off request.GET. Without them, every UTM on a link that
      * opened through a verified App Link was dropped on the floor.
      */
@@ -293,9 +300,9 @@ object DeeplinklyNetwork {
     /**
      * Builds the normalized attribution snapshot persisted by AttributionStore.
      *
-     * The backend nests UTM and ad-click params inside "params" (click-time values
+     * The service nests UTM and ad-click params inside "params" (click-time values
      * merged over the link's own metadata) - see _click_attribution_params in
-     * links/views.py. Reading them off the top level of the map returned by
+     * the service. Reading them off the top level of the map returned by
      * [extractParamsFromJson] always yielded null, so every snapshot taken on the
      * deep-link path carried nothing but a source and a click_id. Every caller goes
      * through here so that nesting is unwrapped in exactly one place.
@@ -323,7 +330,7 @@ object DeeplinklyNetwork {
     }
 
     /**
-     * @return whether the payload reached the backend on this attempt. A
+     * @return whether the payload reached the service on this attempt. A
      *   queued retry reports false: a caller's dedupe latch must not close on a
      *   payload that has so far only been written to storage.
      */

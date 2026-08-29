@@ -279,7 +279,7 @@ class DeepLinkHandlerTest {
         )
     }
 
-    /** The backend's intent:// fallback is matched on its click_id, not a path. */
+    /** The service's intent:// fallback is matched on its click_id, not a path. */
     @Test
     fun `a custom scheme link carrying a click id is still handled`() {
         val intent = Intent(
@@ -297,7 +297,7 @@ class DeepLinkHandlerTest {
 
     /**
      * The App Link bypass: the OS routes https://<link domain>/<code> straight
-     * to the app, so the backend never saw the click and the code is the only
+     * to the app, so the service never saw the click and the code is the only
      * thing we have to resolve on.
      */
     @Test

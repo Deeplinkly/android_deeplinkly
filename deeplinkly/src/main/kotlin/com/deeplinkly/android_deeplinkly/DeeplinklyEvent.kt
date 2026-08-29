@@ -7,11 +7,11 @@ import org.json.JSONObject
  * Validation for [Deeplinkly.logEvent].
  *
  * These rules used to live in Dart, which meant they only applied to Flutter
- * callers - a native integrator got none of them, and the backend saw payloads
+ * callers - a native integrator got none of them, and the service saw payloads
  * the documented contract says are impossible. They live here now so every host
  * gets the same answer, and Dart forwards rather than pre-checking.
  *
- * The limits are the documented ones and are asserted by the backend too;
+ * The limits are the documented ones and are asserted by the service too;
  * changing one here without changing it there will start silently truncating.
  */
 object DeeplinklyEvent {
@@ -24,7 +24,7 @@ object DeeplinklyEvent {
      * Reserved for the SDK's own bookkeeping (`_dl_event_seq`,
      * `_dl_session_id`, ...).
      *
-     * The backend excludes this prefix from the caller's parameter budget, so
+     * The service excludes this prefix from the caller's parameter budget, so
      * letting a caller write one would both collide with the SDK's own values
      * and smuggle parameters past the count limit.
      */
@@ -36,7 +36,7 @@ object DeeplinklyEvent {
      * Not `_dl_`-prefixed, so they cost a parameter and the tenant sees them in
      * their dashboard, which is the point — the amount of a sale is the first
      * thing someone reads off a purchase event. What the reservation buys is a
-     * *shape*: the backend lifts these two into typed columns, and Meta's
+     * *shape*: the service lifts these two into typed columns, and Meta's
      * `custom_data.value`/`currency` and Google's conversion value both want a
      * number and a currency code rather than whatever a caller felt like.
      *
@@ -116,7 +116,7 @@ object DeeplinklyEvent {
 
                 is List<*>, is Map<*, *> -> {
                     // Containers are stored as compact JSON text, so it is the
-                    // encoded length the backend measures - and truncates.
+                    // encoded length the service measures - and truncates.
                     val encoded = try {
                         encodeCompactJson(value)
                     } catch (_: IllegalArgumentException) {
@@ -147,7 +147,7 @@ object DeeplinklyEvent {
      *
      * Written out rather than handed to `JSONObject(Map)` because org.json is
      * lenient: it stringifies types it does not understand instead of failing,
-     * which would let a value through here that the backend cannot store.
+     * which would let a value through here that the service cannot store.
      */
     private fun encodeCompactJson(value: Any?): String =
         when (val wrapped = toJsonValue(value)) {

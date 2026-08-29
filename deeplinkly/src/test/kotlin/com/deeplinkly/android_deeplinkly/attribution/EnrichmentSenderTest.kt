@@ -1,13 +1,17 @@
 package com.deeplinkly.android_deeplinkly.attribution
 
 import androidx.test.core.app.ApplicationProvider
+import com.deeplinkly.android_deeplinkly.core.ConsentStore
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyContext
 import com.deeplinkly.android_deeplinkly.core.DeeplinklyUtils
 import com.deeplinkly.android_deeplinkly.DeeplinklyUserData
 import com.deeplinkly.android_deeplinkly.core.Prefs
+import com.deeplinkly.android_deeplinkly.core.PushProvider
+import com.deeplinkly.android_deeplinkly.core.PushTokenStore
 import com.deeplinkly.android_deeplinkly.core.UserDataStore
 import com.deeplinkly.android_deeplinkly.network.DeeplinklyNetwork
 import com.deeplinkly.android_deeplinkly.privacy.AttributionLevel
+import com.deeplinkly.android_deeplinkly.privacy.ConsentState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -22,7 +26,7 @@ import org.robolectric.RobolectricTestRunner
  * Android had no latch at all until now: every path that can fire twice for
  * one report — a queued resolve replayed after the live one, a warm start
  * re-reading stored attribution — sent a duplicate, while iOS collapsed it.
- * The asymmetry showed up in the backend as inflated enrichment counts on
+ * The asymmetry showed up in the service as inflated enrichment counts on
  * Android only.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -232,7 +236,7 @@ class EnrichmentSenderTest {
 
     /**
      * Empty is a value here, not an absence. `UserDataStore.clear` tombstones
-     * each set field to "" and the backend reads that as "erase this column";
+     * each set field to "" and the service reads that as "erase this column";
      * a filter that dropped empties on the way out would turn a deletion into a
      * no-op without anyone noticing.
      */
@@ -314,5 +318,127 @@ class EnrichmentSenderTest {
             "deep_link",
         )
         assertEquals(without, with)
+    }
+
+    // ------------------------------------------------------------- consent
+
+    /**
+     * Consent has to reach the service on the ordinary enrichment path: it is
+     * what the forwarder reads when it decides whether a conversion may be
+     * uploaded at all.
+     */
+    @Test
+    fun `consent rides along on the payload`() {
+        ConsentStore.merge(ConsentState.GRANTED, ConsentState.DENIED, isEea = true)
+
+        send(mapOf("click_id" to "c1"))
+
+        assertEquals(1, sent.size)
+        assertEquals("granted", sent[0][ConsentStore.KEY_AD_USER_DATA])
+        assertEquals("denied", sent[0][ConsentStore.KEY_AD_PERSONALIZATION])
+        assertEquals("true", sent[0][ConsentStore.KEY_IS_EEA])
+    }
+
+    /**
+     * The failure this guards against. A grant followed by a withdrawal reports
+     * twice under one source, and an identity-only key would collapse the
+     * withdrawal into the grant — losing precisely the update that must not be
+     * lost.
+     */
+    @Test
+    fun `a withdrawal after a grant is not deduped away`() {
+        ConsentStore.merge(ConsentState.GRANTED, ConsentState.GRANTED, null)
+        send(emptyMap(), source = "consent", force = true)
+
+        ConsentStore.merge(ConsentState.DENIED, ConsentState.DENIED, null)
+        send(emptyMap(), source = "consent", force = true)
+
+        assertEquals(2, sent.size)
+        assertEquals("denied", sent[1][ConsentStore.KEY_AD_USER_DATA])
+    }
+
+    /** A banner re-reporting the same answer is still one report. */
+    @Test
+    fun `an unchanged consent report is deduped`() {
+        ConsentStore.merge(ConsentState.GRANTED, ConsentState.GRANTED, null)
+        send(emptyMap(), source = "consent", force = true)
+        send(emptyMap(), source = "consent", force = true)
+
+        assertEquals(1, sent.size)
+    }
+
+    /**
+     * Consent is `minimal` tier, so it survives every level that sends anything
+     * at all. A level that stripped it would leave the forwarder unable to tell
+     * a denial from an app that never asked.
+     */
+    @Test
+    fun `consent survives the strictest level that still sends`() {
+        AttributionLevel.set(AttributionLevel.MINIMAL)
+        ConsentStore.merge(ConsentState.DENIED, ConsentState.DENIED, isEea = true)
+
+        send(mapOf("click_id" to "c1"))
+
+        assertEquals(1, sent.size)
+        assertEquals("denied", sent[0][ConsentStore.KEY_AD_USER_DATA])
+    }
+
+    // ---------------------------------------------------------- push token
+
+    @Test
+    fun `the push token rides along on the payload`() {
+        PushTokenStore.set("tok-123", PushProvider.FCM)
+
+        send(mapOf("click_id" to "c1"))
+
+        assertEquals(1, sent.size)
+        assertEquals("tok-123", sent[0]["push_token"])
+        assertEquals("fcm", sent[0]["push_provider"])
+    }
+
+    /**
+     * Tokens rotate. A rotation reports under the same source and must not
+     * collapse into the first report, or the prober keeps pinging a token that
+     * no longer resolves and reads the failure as an uninstall.
+     */
+    @Test
+    fun `a rotated push token is not deduped away`() {
+        PushTokenStore.set("tok-123", PushProvider.FCM)
+        send(emptyMap(), source = "push_token", force = true)
+
+        PushTokenStore.set("tok-456", PushProvider.FCM)
+        send(emptyMap(), source = "push_token", force = true)
+
+        assertEquals(2, sent.size)
+        assertEquals("tok-456", sent[1]["push_token"])
+    }
+
+    /**
+     * `push_token` is FULL tier: a unique per-install identifier a server can
+     * address. An app at REDUCED does not report it and does not get uninstall
+     * measurement. That is the level working, and pinning it here means a
+     * future reclassification has to be deliberate.
+     */
+    @Test
+    fun `the push token is dropped below full`() {
+        AttributionLevel.set(AttributionLevel.REDUCED)
+        PushTokenStore.set("tok-123", PushProvider.FCM)
+
+        send(mapOf("click_id" to "c1"))
+
+        assertEquals(1, sent.size)
+        assertNull(sent[0]["push_token"])
+        assertNull(sent[0]["push_provider"])
+    }
+
+    /**
+     * A dedupe key becomes the name of a SharedPreferences entry, and a push
+     * token is an addressable identifier. It has to be digested, like the email
+     * address above, rather than written in plain.
+     */
+    @Test
+    fun `the dedupe key does not contain the push token itself`() {
+        val key = EnrichmentSender.dedupeKey(mapOf("push_token" to "tok-123"), "push_token")
+        assertFalse(key.contains("tok-123"))
     }
 }

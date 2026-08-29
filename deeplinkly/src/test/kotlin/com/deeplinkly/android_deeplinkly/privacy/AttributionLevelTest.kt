@@ -145,7 +145,7 @@ class AttributionLevelTest {
 
     /**
      * `hardware_fingerprint` was a 32-bit hashCode of manufacturer|model|
-     * release|w|h|density — a derived device identifier, and the backend
+     * release|w|h|density — a derived device identifier, and the service
      * archived 2.29M rows of it with only ~78k distinct values, so it never
      * identified anything either. Fail-closed means an attempt to collect it
      * again is dropped rather than sent, but the name is worth pinning.

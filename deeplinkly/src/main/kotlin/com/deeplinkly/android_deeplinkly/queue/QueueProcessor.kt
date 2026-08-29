@@ -13,7 +13,7 @@ import kotlinx.coroutines.CancellationException
 
 /**
  * Processes queued deep links with high reliability:
- * 1. Retries unresolved deep links from backend
+ * 1. Retries unresolved deep links from service
  * 2. Delivers resolved deep links to the listener when one is attached
  */
 object QueueProcessor {
@@ -130,7 +130,7 @@ object QueueProcessor {
             try {
                 // localParams carries the click-time UTMs off the original
                 // link. They matter most here on the resolve-by-code path,
-                // where the backend creates the ClickEvent and reads them
+                // where the service creates the a click record and reads them
                 // straight off the query string.
                 val resolveUrl = DeeplinklyNetwork.resolveUrl(
                     pending.clickId, pending.code, pending.localParams
@@ -142,7 +142,7 @@ object QueueProcessor {
 
                 // An unknown click id comes back 200 with stale: true. Retrying
                 // it would keep the item in the queue until it exhausted its
-                // budget and then deliver a link the backend has disowned.
+                // budget and then deliver a link the service has disowned.
                 if (DeeplinklyNetwork.isStale(json)) {
                     Logger.w("Queued resolve returned a stale click; dropping: clickId=${pending.clickId}")
                     DeepLinkQueue.removeResolve(pending)

@@ -10,7 +10,7 @@ import org.robolectric.RobolectricTestRunner
 /**
  * These rules used to live in Dart and applied only to Flutter callers. They
  * are asserted here now because this is the copy every host runs, and because
- * the backend enforces the same limits - a change on one side without the other
+ * the service enforces the same limits - a change on one side without the other
  * starts silently truncating.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -82,7 +82,7 @@ class DeeplinklyEventTest {
     }
 
     /**
-     * The SDK writes its own bookkeeping under this prefix and the backend
+     * The SDK writes its own bookkeeping under this prefix and the service
      * excludes it from the caller's budget, so a caller-supplied one would both
      * collide and smuggle parameters past the count limit.
      */
@@ -137,7 +137,7 @@ class DeeplinklyEventTest {
     }
 
     /**
-     * The limit applies to the *encoded* form, because that is what the backend
+     * The limit applies to the *encoded* form, because that is what the service
      * stores and truncates - not to the element count.
      */
     @Test
@@ -168,7 +168,7 @@ class DeeplinklyEventTest {
      * `value` and `currency` are checked on the plain `logEvent` path, not only
      * inside `logPurchase`. `logEvent` is public and untyped, so a caller who
      * spells a purchase out by hand has to get the same answer as one who used
-     * the wrapper — otherwise the backend's typed columns fill with whatever
+     * the wrapper — otherwise the service's typed columns fill with whatever
      * the hand-rolled path felt like sending.
      */
     @Test

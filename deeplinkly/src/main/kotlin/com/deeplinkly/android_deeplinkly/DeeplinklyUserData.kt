@@ -16,7 +16,7 @@ package com.deeplinkly.android_deeplinkly
  * choice and buy nothing: SHA-256 of a normalised email is not one-way against
  * an address someone already has — it is precisely the value Meta matches on,
  * so anyone holding the digest holds the match key. Keeping the plaintext is
- * what lets the backend normalise per destination (Meta and Google disagree
+ * what lets the service normalise per destination (Meta and Google disagree
  * about phone formatting) and re-derive when a platform changes its rules.
  *
  * ## Normalisation is deliberately shallow
@@ -24,7 +24,7 @@ package com.deeplinkly.android_deeplinkly
  * Trimming only, except where a value has to fit a column that cannot hold the
  * alternative. Lowercasing an email, or stripping punctuation out of a name, is
  * a destination's rule rather than a fact about the value, and doing it here
- * would throw away what the app actually knows before the backend can decide
+ * would throw away what the app actually knows before the service can decide
  * what each destination wants.
  *
  * The three constrained fields are the exception. `user_gender` is one
@@ -51,6 +51,24 @@ object DeeplinklyUserData {
     const val KEY_COUNTRY = "user_country"
 
     /**
+     * Host-supplied identifiers that are not one of the twelve typed fields,
+     * carried as one JSON object.
+     *
+     * This exists because an app binary is frozen for as long as its release
+     * cycle, and the typed field list is not. When a customer needs to join
+     * attribution to a product-analytics tool — a Mixpanel distinct id, an
+     * Amplitude device id, a CleverTap id — adding a thirteenth named field
+     * would mean waiting for every host app to ship again. A single open field
+     * moves that from an SDK release to a service deploy.
+     *
+     * One JSON key rather than `user_custom_*` wire keys on purpose: the
+     * catalogue is a closed set that the published inventory and the
+     * `ErrorLog` redaction both derive from, and letting callers invent wire
+     * keys would make it neither closed nor generated.
+     */
+    const val KEY_CUSTOM_DATA = "user_custom_data"
+
+    /**
      * Every `user_*` key, and the length the catalogue gives it.
      *
      * `custom_user_id` is absent on purpose: it is user-scoped in the catalogue
@@ -60,7 +78,10 @@ object DeeplinklyUserData {
      */
     val MAX_LENGTHS: Map<String, Int> = mapOf(
         KEY_EMAIL to 320,
-        KEY_PHONE to 32,
+        // 64, not the 32 a phone number needs: with PIIHashing on this field
+        // carries a SHA-256 hex digest instead. Matches the catalogue's max_len
+        // and the service column.
+        KEY_PHONE to 64,
         KEY_FIRST_NAME to 128,
         KEY_LAST_NAME to 128,
         KEY_DATE_OF_BIRTH to 10,
@@ -70,7 +91,13 @@ object DeeplinklyUserData {
         KEY_STATE to 128,
         KEY_ZIP to 32,
         KEY_COUNTRY to 2,
+        KEY_CUSTOM_DATA to 4096,
     )
+
+    /** Caps on the map [KEY_CUSTOM_DATA] is built from. */
+    const val MAX_CUSTOM_ENTRIES = 10
+    const val MAX_CUSTOM_KEY_LENGTH = 64
+    const val MAX_CUSTOM_VALUE_LENGTH = 256
 
     /** The keys [UserDataStore] may hold. */
     val KEYS: Set<String> get() = MAX_LENGTHS.keys
@@ -139,6 +166,60 @@ object DeeplinklyUserData {
             if (value != null) out[key] = value
         }
         return Result(out, null)
+    }
+
+    /**
+     * Encodes [custom] into the JSON object [KEY_CUSTOM_DATA] holds.
+     *
+     * Bounded on entry count, key length and value length so a caller cannot
+     * turn an open field into an unbounded one. The caps mirror event
+     * parameters, which is the other place a host app hands us arbitrary keys.
+     *
+     * Values are trimmed and otherwise sent as supplied. Nothing here is
+     * hashed, for the reason in the class note: what the service needs is the
+     * value the app actually holds, so it can normalise per destination.
+     *
+     * An empty or null map answers `null to null` — absent, which merges as
+     * "leave whatever is there alone", matching every other field.
+     */
+    internal fun encodeCustomData(
+        custom: Map<String, String?>?,
+    ): Pair<String?, Rejection?> {
+        if (custom.isNullOrEmpty()) return null to null
+
+        val kept = LinkedHashMap<String, String>()
+        for ((rawKey, rawValue) in custom) {
+            val key = rawKey.trim()
+            val value = rawValue?.trim().orEmpty()
+            // A blank value is a caller saying nothing about this key, not a
+            // request to erase it. clearUserData() is what erases.
+            if (key.isEmpty() || value.isEmpty()) continue
+            if (key.length > MAX_CUSTOM_KEY_LENGTH) {
+                return null to Rejection(
+                    "custom data key \"$key\" exceeds $MAX_CUSTOM_KEY_LENGTH characters"
+                )
+            }
+            if (value.length > MAX_CUSTOM_VALUE_LENGTH) {
+                return null to Rejection(
+                    "custom data value for \"$key\" exceeds " +
+                        "$MAX_CUSTOM_VALUE_LENGTH characters"
+                )
+            }
+            kept[key] = value
+        }
+        if (kept.isEmpty()) return null to null
+        if (kept.size > MAX_CUSTOM_ENTRIES) {
+            return null to Rejection(
+                "custom data holds more than $MAX_CUSTOM_ENTRIES entries (${kept.size})"
+            )
+        }
+
+        // Sorted so the same map always encodes to the same string. An
+        // unstable blob would look like a changed value to the merge on the far
+        // side and rewrite a column that did not change. iOS sorts too.
+        val json = org.json.JSONObject()
+        for (key in kept.keys.sorted()) json.put(key, kept[key])
+        return json.toString() to null
     }
 
     /** Either the normalised fields or the reason there are none. */

@@ -15,11 +15,11 @@ import org.json.JSONObject
  * ## Clearing
  *
  * [clear] does not simply delete the blob. A key that stops being sent is
- * indistinguishable, at the backend, from a key that was never sent — the
+ * indistinguishable, at the service, from a key that was never sent — the
  * enrichment path skips absent values so a phone that failed to read its
  * carrier cannot blank the carrier we already know. So clearing writes a
  * tombstone instead: every key that currently holds a value is rewritten to the
- * empty string, which the backend reads as "erase this column".
+ * empty string, which the service reads as "erase this column".
  *
  * The tombstone is kept rather than dropped after one send. Delivery is not
  * observable from here, and a clear that is silently lost because the device

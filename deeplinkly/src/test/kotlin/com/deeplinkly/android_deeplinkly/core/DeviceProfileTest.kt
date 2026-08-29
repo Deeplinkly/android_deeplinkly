@@ -139,6 +139,34 @@ class DeviceProfileTest {
     }
 
     @Test
+    fun `the total storage size is reported in whole gigabytes`() {
+        val profile = DeviceProfile.get()
+
+        // Meta's extinfo array has a slot for this and it was empty until
+        // catalogue 10. Robolectric backs StatFs with a real temp filesystem,
+        // so the value is whatever the host disk reports — the assertion is on
+        // the units, not the number.
+        val reported = profile["total_storage_gb"]
+        assertNotNull("total_storage_gb was not collected", reported)
+        val gb = reported!!.toLong()
+        assertTrue("expected whole gigabytes, got $gb", gb >= 0)
+        // A byte count would be enormous here, and that is the failure this
+        // guards: bytes of free-or-total space is a high-entropy value that
+        // makes a device recognisable across installs, which is the one thing
+        // this SDK claims it does not do. No consumer disk is a million GB.
+        assertTrue("looks like raw bytes rather than GB: $gb", gb < 1_000_000L)
+    }
+
+    @Test
+    fun `free space is not in the static profile`() {
+        // It belongs to DynamicSignals. The profile is cached until its stamp
+        // changes — SDK version, catalogue version, app version, fingerprint,
+        // OS release — none of which move when a disk fills up, so free space
+        // collected here would report install-day forever.
+        assertFalse(DeviceProfile.get().containsKey("free_storage_gb"))
+    }
+
+    @Test
     fun `the profile carries the identity and build signals`() {
         val profile = DeviceProfile.get()
 

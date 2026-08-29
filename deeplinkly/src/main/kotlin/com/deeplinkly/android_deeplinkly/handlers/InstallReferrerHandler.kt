@@ -63,7 +63,7 @@ object InstallReferrerHandler {
 
                         // The click-to-install timings ride on the same
                         // ReferrerDetails we already had in hand, and give the
-                        // backend click→install latency for free. Latched into
+                        // service click→install latency for free. Latched into
                         // the static profile rather than sent from here, since
                         // they describe the install and never change.
                         InstallReferrerTimings.record(details)
@@ -88,6 +88,8 @@ object InstallReferrerHandler {
                         attributionData["ttclid"] = parsedReferrer.getQueryParameter("ttclid")
                         attributionData["gbraid"] = parsedReferrer.getQueryParameter("gbraid")
                         attributionData["wbraid"] = parsedReferrer.getQueryParameter("wbraid")
+                        attributionData["gad_source"] = parsedReferrer.getQueryParameter("gad_source")
+                        attributionData["gad_campaignid"] = parsedReferrer.getQueryParameter("gad_campaignid")
 
                         val localParams = mapOf<String, String?>(
                             "utm_source" to parsedReferrer.getQueryParameter("utm_source"),
@@ -99,7 +101,9 @@ object InstallReferrerHandler {
                             "fbclid" to parsedReferrer.getQueryParameter("fbclid"),
                             "ttclid" to parsedReferrer.getQueryParameter("ttclid"),
                             "gbraid" to parsedReferrer.getQueryParameter("gbraid"),
-                            "wbraid" to parsedReferrer.getQueryParameter("wbraid")
+                            "wbraid" to parsedReferrer.getQueryParameter("wbraid"),
+                            "gad_source" to parsedReferrer.getQueryParameter("gad_source"),
+                            "gad_campaignid" to parsedReferrer.getQueryParameter("gad_campaignid")
                         )
 
                         val initialAttribution = linkedMapOf<String, String?>(
@@ -115,6 +119,8 @@ object InstallReferrerHandler {
                             "ttclid" to parsedReferrer.getQueryParameter("ttclid"),
                             "gbraid" to parsedReferrer.getQueryParameter("gbraid"),
                             "wbraid" to parsedReferrer.getQueryParameter("wbraid"),
+                            "gad_source" to parsedReferrer.getQueryParameter("gad_source"),
+                            "gad_campaignid" to parsedReferrer.getQueryParameter("gad_campaignid"),
                             "click_id" to clickId
                         )
                         AttributionStore.saveOnce(initialAttribution)
@@ -154,7 +160,7 @@ object InstallReferrerHandler {
                                     // An unknown click id comes back 200 with
                                     // stale: true. The referrer is read once per
                                     // install, so mark it handled rather than
-                                    // re-resolving an id the backend disowns.
+                                    // re-resolving an id the service disowns.
                                     if (DeeplinklyNetwork.isStale(json)) {
                                         Logger.w("Install referrer resolve returned a stale click; suppressing delivery.")
                                         prefs.edit().putBoolean(KEY_REFERRER_HANDLED, true).apply()
