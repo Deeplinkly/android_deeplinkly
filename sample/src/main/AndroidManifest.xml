@@ -6,10 +6,13 @@
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
         <!-- The API key. Same meta-data name the Flutter plugin reads, because
-             it is the same SDK underneath. -->
+             it is the same SDK underneath. Injected at build time from the
+             gitignored deeplinkly.properties at the repository root - see
+             sample/build.gradle.kts. Not written here, because this file is
+             committed and a committed key is a published one. -->
         <meta-data
             android:name="com.deeplinkly.sdk.api_key"
-            android:value="62da475f-4582-4f51-b106-9cb875b3cefb" />
+            android:value="${deeplinklyApiKey}" />
 
         <meta-data
             android:name="com.deeplinkly.sdk.link_domains"

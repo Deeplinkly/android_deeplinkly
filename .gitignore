@@ -6,3 +6,9 @@ local.properties
 captures/
 .DS_Store
 *.asc
+
+# The sample's Deeplinkly API key. Injected into the manifest at build time by
+# sample/build.gradle.kts; never committed, because a key in a public repo is a
+# published key and the tags that carry it cannot be edited.
+deeplinkly.properties
+**/deeplinkly.properties
