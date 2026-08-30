@@ -210,11 +210,11 @@ Every field is optional and each call **merges**, so you can supply an email at
 sign-up and an address at checkout. A malformed field rejects the whole call —
 nothing is stored — so you never have to guess which of the values took.
 
-Values are sent as you supply them and hashed only when a conversion is
-forwarded. On-device hashing would look safer and buy nothing: the digest of a
-normalised email is exactly the value Meta matches on, so anyone holding it
-holds the match key. Keeping the plaintext is also what lets the service
-normalise per destination, which Meta and Google disagree about.
+By default the values are sent as you supply them and hashed only when a
+conversion is forwarded, which is what lets the service normalise per
+destination — Meta and Google disagree about that. `setPIIHashingEnabled(true)`
+moves the hashing onto the device instead; see [Hashing on the
+device](#hashing-on-the-device) for what that buys and what it costs.
 
 Supply only what your own privacy policy and consent flow allow — the SDK
 cannot know what you told your users. These fields survive a `reduced`
@@ -230,6 +230,35 @@ Constraints, enforced before anything is stored:
   not say.
 - `country`: ISO-3166-1 alpha-2, e.g. `"US"`
 - per-field maximum lengths, listed in [SIGNALS.md](docs/SIGNALS.md)
+
+### Your own identifiers
+
+`customData` carries identifiers Deeplinkly does not name — typically your own
+product-analytics ids, such as a Mixpanel distinct id, an Amplitude device id or
+a CleverTap id:
+
+```kotlin
+Deeplinkly.setUserData(
+    userId = "user_123",
+    customData = mapOf(
+        "mixpanel_distinct_id" to "d-8837",
+        "clevertap_id" to "ct-4412",
+    ),
+)
+```
+
+It exists because a host app's binary is frozen for its whole release cycle
+while the list of identifiers a customer needs is not: attaching one previously
+meant waiting for a new named field and a new app release. Now it is a service
+change.
+
+Bounded at 10 entries, 64-character keys and 256-character values, and encoded
+with sorted keys so the same map always produces the same string. Anything
+larger rejects the whole call, exactly as one bad typed field does. It is one
+catalogue signal — `user_custom_data` — rather than open wire keys, so the
+published inventory and the `ErrorLog` redaction stay derived from a closed set.
+It is treated exactly like the twelve named fields: user scope, `minimal` tier,
+erased by `clearUserData()`, and in scope for the erasure API.
 
 To erase everything recorded — on sign-out, or when someone withdraws consent:
 
@@ -407,6 +436,36 @@ The tracking switch and attribution level persist across launches.
 The SDK does **not** do probabilistic ("fingerprint") matching. Device signals
 are collected for reporting, never to derive an identifier linking a click to an
 install — matching is deterministic, on the click id or the install referrer.
+
+### Hashing on the device
+
+Off by default. With it on, the identifying fields are SHA-256 hashed on the
+device before they are sent, so plaintext never reaches Deeplinkly:
+
+```kotlin
+Deeplinkly.setPIIHashingEnabled(true)
+Deeplinkly.isPIIHashingEnabled()   // off unless you turned it on
+```
+
+The state is reported to the service as `pii_hashing_enabled`, so it knows
+whether the columns hold digests.
+
+Only email, phone, first and last name are hashed. Gender, country and date of
+birth are not: their value ranges are small enough that a digest is reversed by
+enumerating them, so hashing them would be protection in appearance only while
+costing the storage width to hold it.
+
+**It costs attribution quality, and the trade is yours.** A digest is computed
+once, under one normalisation, and advertising destinations disagree about phone
+formatting — so a conversion forwarded to a destination whose rules differ will
+not match, and the service can no longer re-derive per destination because the
+value it would need is gone. Phone numbers are normalised by discarding
+non-digits, which does not understand trunk prefixes, so send one consistent
+format. Enable this when a compliance requirement says plaintext must not reach
+a processor, not by default.
+
+Hashing happens at send time rather than in the store, so the switch is
+reversible.
 
 ### Advertising ID (opt-in)
 
